@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class BookingStatusHistory
 {
+    [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid BookingId { get; set; }
     public string Status { get; set; } = string.Empty;

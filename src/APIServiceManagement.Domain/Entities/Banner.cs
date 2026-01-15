@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class Banner
 {
+    [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Title { get; set; }
     public string Subtitle { get; set; }

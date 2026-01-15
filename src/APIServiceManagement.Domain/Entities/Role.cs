@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class Role
 {
+    [Key]
     public int Id { get; set; }
     public string Name { get; set; }
     public string Description { get; set; }
@@ -13,7 +15,7 @@ public class Role
     public bool IsActive { get; set; } = true;
 
     // Navigation properties
-    public RoleTermsCondition RoleTermsCondition { get; set; }
+    public ICollection<RoleTermsCondition> RoleTermsConditions { get; set; }
     public ICollection<UsersExtraInfo> UsersExtraInfos { get; set; }
     public ICollection<User> Users { get; set; }
 }

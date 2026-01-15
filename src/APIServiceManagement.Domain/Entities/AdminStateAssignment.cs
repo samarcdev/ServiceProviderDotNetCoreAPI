@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class AdminStateAssignment
 {
+    [Key]
     public int Id { get; set; }
     public Guid AdminUserId { get; set; }
     public int StateId { get; set; } 

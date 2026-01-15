@@ -25,10 +25,26 @@ public class AuthController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpPost("register/customer")]
+    public async Task<IActionResult> RegisterCustomer(CustomerRegisterRequest request)
+    {
+        var response = await _authService.RegisterCustomerAsync(request);
+        return Ok(response);
+    }
+
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
         var response = await _authService.LoginAsync(request);
+        return Ok(response);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    public async Task<IActionResult> RefreshToken(RefreshTokenRequest request)
+    {
+        var response = await _authService.RefreshTokenAsync(request);
         return Ok(response);
     }
 }

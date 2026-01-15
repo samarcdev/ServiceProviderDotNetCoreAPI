@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class UsersAddress
 {
+    [Key]
     public int Id { get; set; }
     public Guid? UserId { get; set; }
     public string Street { get; set; }

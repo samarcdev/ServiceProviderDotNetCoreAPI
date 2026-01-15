@@ -18,6 +18,13 @@ public static class DependencyInjection
         // Register services
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IServiceProviderRegistrationService, ServiceProviderRegistrationService>();
+        services.AddScoped<IFileStorageService, LocalFileStorageService>();
+        services.AddScoped<IMasterDataService, MasterDataService>();
+        services.AddScoped<IBannerService, BannerService>();
+        services.AddScoped<IBookingService, BookingService>();
+        services.AddScoped<IRoleService, RoleService>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
 
         return services;

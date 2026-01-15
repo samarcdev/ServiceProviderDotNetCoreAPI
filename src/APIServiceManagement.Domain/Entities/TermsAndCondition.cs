@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class TermsAndCondition
 {
+    [Key]
     public int Id { get; set; }
     public string Name { get; set; }
     public string Description { get; set; }
@@ -14,5 +17,5 @@ public class TermsAndCondition
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation property
-    public RoleTermsCondition RoleTermsCondition { get; set; }
+    public ICollection<RoleTermsCondition> RoleTermsConditions { get; set; }
 }

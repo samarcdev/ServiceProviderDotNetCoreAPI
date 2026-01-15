@@ -11,6 +11,6 @@ public class RoleTermsCondition
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
-    public TermsAndCondition TermsAndCondition { get; set; }
-    public Role Role { get; set; }
+    public TermsAndCondition? TermsAndCondition { get; set; }
+    public Role? Role { get; set; }
 }

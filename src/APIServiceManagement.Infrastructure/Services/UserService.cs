@@ -32,6 +32,7 @@ public class UserService : IUserService
             Id = user.Id,
             Name = user.Name,
             Email = user.Email,
+            MobileNumber = user.MobileNumber,
             Status = user.Status,
             Role = user.Role?.Name, 
             LastSignInAt = user.LastSignInAt
@@ -47,6 +48,7 @@ public class UserService : IUserService
                 Id = u.Id,
                 Name = u.Name,
                 Email = u.Email,
+                MobileNumber = u.MobileNumber,
                 Status = u.Status,
                 Role = u.Role != null ? u.Role.Name : null,
                 LastSignInAt = u.LastSignInAt
@@ -64,6 +66,7 @@ public class UserService : IUserService
             Id = Guid.NewGuid(),
             Name = request.Name,
             Email = request.Email,
+            MobileNumber = request.MobileNumber?.Trim() ?? string.Empty,
             PasswordSalt = salt,
             PasswordHash = hash,
             PasswordSlug = Guid.NewGuid().ToString("N"),
@@ -83,6 +86,7 @@ public class UserService : IUserService
         {
             user.Name = request.Name;
             user.Email = request.Email;
+            user.MobileNumber = request.MobileNumber?.Trim() ?? string.Empty;
             user.Status = request.Status;
             user.RoleId = request.RoleId;
             user.UpdatedAt = DateTime.UtcNow;

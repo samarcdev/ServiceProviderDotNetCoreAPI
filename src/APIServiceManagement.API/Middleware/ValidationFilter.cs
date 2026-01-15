@@ -11,11 +11,9 @@ namespace APIServiceManagement.API.Middleware
             if (!context.ModelState.IsValid)
             {
                 var errors = context.ModelState
-                    .Where(ms => ms.Value.Errors.Any())
-                    .ToDictionary(
-                        kvp => kvp.Key,
-                        kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
-                    );
+                    .Where(ms => ms.Value?.Errors.Any() == true)
+                    .SelectMany(ms => ms.Value?.Errors.Select(e => e.ErrorMessage) ?? Enumerable.Empty<string>())
+                    .ToArray();
 
                 var response = new
                 {

@@ -14,6 +14,11 @@ public class UpdateUserRequest
     [StringLength(256)]
     public string Email { get; set; }
 
+    [Required]
+    [Phone]
+    [StringLength(20)]
+    public string MobileNumber { get; set; } = string.Empty;
+
     [Range(1, int.MaxValue)]
     public int RoleId { get; set; }
 

@@ -1,9 +1,11 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Domain.Entities;
 
 public class UserRegistrationStep
 {
+    [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }
     public int StepNumber { get; set; }

@@ -5,9 +5,9 @@ namespace APIServiceManagement.Application.DTOs.Requests;
 public class LoginRequest
 {
     [Required]
-    [EmailAddress]
-    [StringLength(256)]
-    public string Email { get; set; }
+    [Phone]
+    [StringLength(20)]
+    public string MobileNumber { get; set; } = string.Empty;
 
     [Required]
     [StringLength(128, MinimumLength = 8)]
