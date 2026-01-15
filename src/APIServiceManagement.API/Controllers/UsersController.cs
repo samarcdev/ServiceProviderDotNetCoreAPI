@@ -2,11 +2,13 @@ using Microsoft.AspNetCore.Mvc;
 using APIServiceManagement.Application.Interfaces.Services;
 using APIServiceManagement.Application.DTOs.Requests;
 using APIServiceManagement.Application.DTOs.Responses;
+using Microsoft.AspNetCore.Authorization;
 
 namespace APIServiceManagement.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
@@ -16,6 +18,7 @@ public class UsersController : ControllerBase
         _userService = userService;
     }
 
+    [Authorize(Roles = "Admin,MasterAdmin")]
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -30,6 +33,7 @@ public class UsersController : ControllerBase
         return Ok(user);
     }
 
+    [Authorize(Roles = "Admin,MasterAdmin")]
     [HttpPost]
     public async Task<IActionResult> Create(CreateUserRequest request)
     {
@@ -37,6 +41,7 @@ public class UsersController : ControllerBase
         return StatusCode(201);
     }
 
+    [Authorize(Roles = "Admin,MasterAdmin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, UpdateUserRequest request)
     {
@@ -44,6 +49,7 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
+    [Authorize(Roles = "Admin,MasterAdmin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {

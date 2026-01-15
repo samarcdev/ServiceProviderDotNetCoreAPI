@@ -12,7 +12,7 @@ public class UserRegistrationStep
     public bool IsCompleted { get; set; } = false;
     public DateTime? CompletedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; 
 
     // Navigation property
     public User User { get; set; }

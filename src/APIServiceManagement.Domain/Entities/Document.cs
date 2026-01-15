@@ -11,6 +11,9 @@ public class Document
     public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
     public long? FileSize { get; set; }
     public string FileName { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation property
     public User User { get; set; }

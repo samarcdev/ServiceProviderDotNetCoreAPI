@@ -1,3 +1,5 @@
+using System;
+
 namespace APIServiceManagement.Domain.Entities;
 
 public class UsersAddress
@@ -11,6 +13,8 @@ public class UsersAddress
     public string AddressLine1 { get; set; }
     public string AddressLine2 { get; set; }
     public int? StateId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation properties
     public User User { get; set; }

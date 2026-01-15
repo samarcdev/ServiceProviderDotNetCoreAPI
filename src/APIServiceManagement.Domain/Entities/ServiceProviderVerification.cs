@@ -14,6 +14,7 @@ public class ServiceProviderVerification
     public Guid? VerifiedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsActive { get; set; } = true;
 
     // Navigation properties
     public User ProviderUser { get; set; }

@@ -1,9 +1,8 @@
-using APIServiceManagement.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 
 namespace APIServiceManagement.Application.DTOs.Requests;
 
-public class CreateUserRequest
+public class RegisterRequest
 {
     [Required]
     [StringLength(100, MinimumLength = 2)]
@@ -18,9 +17,7 @@ public class CreateUserRequest
     [StringLength(128, MinimumLength = 8)]
     public string Password { get; set; }
 
-    [Range(1, int.MaxValue)]
-    public int RoleId { get; set; }
-
-    [EnumDataType(typeof(UserStatus))]
-    public UserStatus Status { get; set; }
+    [Required]
+    [StringLength(50)]
+    public string Role { get; set; }
 }

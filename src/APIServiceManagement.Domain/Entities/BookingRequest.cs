@@ -28,8 +28,7 @@ public class BookingRequest
     public DateTime? CompletedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-    public int WorkingHours { get; set; } = 1;
-
+    public int WorkingHours { get; set; } = 1; 
     // Navigation properties
     public User Customer { get; set; }
     public Service Service { get; set; }

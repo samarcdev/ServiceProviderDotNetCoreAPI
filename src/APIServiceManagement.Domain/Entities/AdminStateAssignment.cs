@@ -6,8 +6,7 @@ public class AdminStateAssignment
 {
     public int Id { get; set; }
     public Guid AdminUserId { get; set; }
-    public int StateId { get; set; }
-    public bool IsActive { get; set; } = true;
+    public int StateId { get; set; } 
     public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
     public Guid? AssignedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

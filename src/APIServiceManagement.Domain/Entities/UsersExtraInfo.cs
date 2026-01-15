@@ -19,6 +19,7 @@ public class UsersExtraInfo
     public bool IsVerified { get; set; } = false;
     public string AlternativeMobile { get; set; }
     public string VerificationStatus { get; set; } = "pending";
+    public bool IsActive { get; set; } = true;
 
     // Navigation properties
     public User User { get; set; }

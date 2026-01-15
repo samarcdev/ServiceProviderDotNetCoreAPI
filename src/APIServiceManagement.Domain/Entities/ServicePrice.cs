@@ -9,6 +9,7 @@ public class ServicePrice
     public DateTime CreateDate { get; set; } = DateTime.UtcNow;
     public bool IsActive { get; set; } = true;
     public DateTime EffectiveFrom { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public int? ServiceId { get; set; }
 
     // Navigation property

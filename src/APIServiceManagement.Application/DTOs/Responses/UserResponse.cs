@@ -1,4 +1,5 @@
 using APIServiceManagement.Domain.Enums;
+using System;
 
 namespace APIServiceManagement.Application.DTOs.Responses;
 
@@ -8,4 +9,6 @@ public class UserResponse
     public string Name { get; set; }
     public string Email { get; set; }
     public UserStatus Status { get; set; }
+    public string Role { get; set; }
+    public DateTime? LastSignInAt { get; set; }
 }
