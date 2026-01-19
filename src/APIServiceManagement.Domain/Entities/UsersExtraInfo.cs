@@ -1,26 +1,36 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace APIServiceManagement.Domain.Entities;
 
+[Table("users_extra_infos")]
 public class UsersExtraInfo
 {
+    [Key]
+    [Column("id")]
     public int Id { get; set; }
+    [Column("user_id")]
     public Guid? UserId { get; set; }
-    public string FullName { get; set; }
-    public string PhoneNumber { get; set; }
-    public string UserType { get; set; }
+    [Column("full_name")]
+    public string FullName { get; set; } = string.Empty;
+    [Column("phone_number")]
+    public string PhoneNumber { get; set; } = string.Empty;
+    [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    [Column("is_mobile_verified")]
     public bool IsMobileVerified { get; set; } = false;
+    [Column("is_accepted_terms")]
     public bool IsAcceptedTerms { get; set; } = false;
-    public int? RoleId { get; set; }
+    [Column("is_completed")]
     public bool IsCompleted { get; set; } = false;
-    public string Email { get; set; }
-    public bool IsVerified { get; set; } = false;
-    public string AlternativeMobile { get; set; }
-    public string VerificationStatus { get; set; } = "pending";
+    [Column("email")]
+    public string Email { get; set; } = string.Empty;
+    [Column("alternative_mobile")]
+    public string AlternativeMobile { get; set; } = string.Empty;
 
     // Navigation properties
-    public User User { get; set; }
-    public Role Role { get; set; }
+    public User? User { get; set; }
 }

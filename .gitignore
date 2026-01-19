@@ -32,3 +32,6 @@ appsettings.Development.json
 
 # Ignore test results
 TestResults/
+/src/DEVELOPMENT_RULES.md
+
+scripts/
