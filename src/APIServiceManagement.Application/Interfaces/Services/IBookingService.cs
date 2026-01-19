@@ -33,4 +33,10 @@ public interface IBookingService
     Task<ServiceResult> GetServiceProviderDashboardAsync(Guid? providerId, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetUserPincodePreferencesAsync(Guid? userId, CancellationToken cancellationToken = default);
     Task<ServiceResult> SaveUserPincodePreferenceAsync(Guid? userId, PincodePreferenceRequest request, CancellationToken cancellationToken = default);
+    Task<ServiceResult> DeleteUserPincodePreferenceAsync(Guid? userId, Guid preferenceId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetServiceTypesAsync(int? serviceId = null, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetAvailableTimeSlotsAsync(DateTime date, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetBookingSummaryAsync(Guid? userId, int serviceId, int? serviceTypeId, string pincode, DateTime? preferredDate, string? timeSlot, CancellationToken cancellationToken = default);
+    Task<ServiceResult> CancelBookingAsync(Guid? userId, Guid bookingId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetAvailableServiceProvidersAsync(int serviceId, string pincode, CancellationToken cancellationToken = default);
 }

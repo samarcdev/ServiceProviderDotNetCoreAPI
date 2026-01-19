@@ -1,4 +1,5 @@
 using APIServiceManagement.Application.Interfaces.Services;
+using APIServiceManagement.Domain.Constants;
 using APIServiceManagement.Domain.Entities;
 using APIServiceManagement.Domain.Enums;
 using APIServiceManagement.Infrastructure.Data;
@@ -86,7 +87,7 @@ public class MasterDataService : IMasterDataService
             return new List<Service>();
         }
 
-        var verifiedStatuses = new[] { "verified", "approved" };
+        var verifiedStatuses = new[] { VerificationStatusCodes.Verified, VerificationStatusCodes.Approved };
 
         var query =
             from providerService in _context.ProviderServices.AsNoTracking()
@@ -96,16 +97,16 @@ public class MasterDataService : IMasterDataService
                 on providerService.UserId equals address.UserId
             join verification in _context.ServiceProviderVerifications.AsNoTracking()
                 on providerService.UserId equals verification.ProviderUserId
-            join verificationStatus in _context.VerificationStatuses.AsNoTracking()
-                on verification.VerificationStatusId equals verificationStatus.Id
             join user in _context.Users.AsNoTracking()
                 on providerService.UserId equals user.Id
+            join verificationStatus in _context.VerificationStatuses.AsNoTracking()
+                on user.VerificationStatusId equals verificationStatus.Id
             where address.IsActive
                 && address.ZipCode == normalizedPincode
                 && verification.IsActive
                 && verificationStatus.IsActive
                 && verifiedStatuses.Contains(verificationStatus.Code.ToLower())
-                && user.Status == UserStatus.Active
+                && user.StatusId == (int)UserStatusEnum.Active
                 && service.IsActive
             select service;
 

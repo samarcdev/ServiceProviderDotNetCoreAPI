@@ -2,6 +2,7 @@ using System;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using APIServiceManagement.API.Attributes;
 using APIServiceManagement.API.Extensions;
 using APIServiceManagement.Application.DTOs.Requests;
 using APIServiceManagement.Application.Interfaces.Services;
@@ -56,7 +57,48 @@ public class BookingsController : ControllerBase
         return result.ToActionResult();
     }
 
-    [Authorize]
+    [AllowAnonymous]
+    [HttpGet("service-types")]
+    public async Task<IActionResult> GetServiceTypes(
+        [FromQuery] int? serviceId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _bookingService.GetServiceTypesAsync(serviceId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AllowAnonymous]
+    [HttpGet("time-slots")]
+    public async Task<IActionResult> GetTimeSlots(
+        [FromQuery] DateTime date,
+        CancellationToken cancellationToken)
+    {
+        var result = await _bookingService.GetAvailableTimeSlotsAsync(date, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeCustomer]
+    [HttpGet("summary")]
+    public async Task<IActionResult> GetBookingSummary(
+        [FromQuery] int serviceId,
+        [FromQuery] int? serviceTypeId,
+        [FromQuery] string pincode,
+        [FromQuery] DateTime? preferredDate,
+        [FromQuery] string? timeSlot,
+        CancellationToken cancellationToken)
+    {
+        var result = await _bookingService.GetBookingSummaryAsync(
+            GetUserId(),
+            serviceId,
+            serviceTypeId,
+            pincode,
+            preferredDate,
+            timeSlot,
+            cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeCustomer]
     [HttpPost]
     public async Task<IActionResult> CreateBooking([FromBody] BookingCreateRequest request, CancellationToken cancellationToken)
     {
@@ -96,7 +138,18 @@ public class BookingsController : ControllerBase
         return result.ToActionResult();
     }
 
-    [Authorize]
+    [AuthorizeAdmin]
+    [HttpGet("available-providers")]
+    public async Task<IActionResult> GetAvailableServiceProviders(
+        [FromQuery] int serviceId,
+        [FromQuery] string pincode,
+        CancellationToken cancellationToken)
+    {
+        var result = await _bookingService.GetAvailableServiceProvidersAsync(serviceId, pincode, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeAdmin]
     [HttpPost("assign")]
     public async Task<IActionResult> AssignServiceProvider([FromBody] BookingAssignmentRequest request, CancellationToken cancellationToken)
     {
@@ -112,7 +165,7 @@ public class BookingsController : ControllerBase
         return result.ToActionResult();
     }
 
-    [Authorize]
+    [Authorize(Roles = "Customer,ServiceProvider")]
     [HttpGet("pincode-preferences")]
     public async Task<IActionResult> GetUserPincodePreferences(CancellationToken cancellationToken)
     {
@@ -120,11 +173,27 @@ public class BookingsController : ControllerBase
         return result.ToActionResult();
     }
 
-    [Authorize]
+    [Authorize(Roles = "Customer,ServiceProvider")]
     [HttpPost("pincode-preferences")]
     public async Task<IActionResult> SaveUserPincodePreference([FromBody] PincodePreferenceRequest request, CancellationToken cancellationToken)
     {
         var result = await _bookingService.SaveUserPincodePreferenceAsync(GetUserId(), request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [Authorize(Roles = "Customer,ServiceProvider")]
+    [HttpDelete("pincode-preferences/{preferenceId:guid}")]
+    public async Task<IActionResult> DeleteUserPincodePreference(Guid preferenceId, CancellationToken cancellationToken)
+    {
+        var result = await _bookingService.DeleteUserPincodePreferenceAsync(GetUserId(), preferenceId, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeCustomer]
+    [HttpPost("{bookingId:guid}/cancel")]
+    public async Task<IActionResult> CancelBooking(Guid bookingId, CancellationToken cancellationToken)
+    {
+        var result = await _bookingService.CancelBookingAsync(GetUserId(), bookingId, cancellationToken);
         return result.ToActionResult();
     }
 

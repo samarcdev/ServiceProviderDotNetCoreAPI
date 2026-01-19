@@ -55,7 +55,7 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
             };
         }
 
-        var statusId = await GetStatusIdAsync("PENDING", cancellationToken);
+        var statusId = await GetStatusIdAsync(VerificationStatusCodes.Pending, cancellationToken);
         if (!statusId.HasValue)
         {
             return new RegistrationResponse
@@ -167,7 +167,8 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                     PasswordHash = hash,
                     PasswordSlug = Guid.NewGuid().ToString("N"),
                     RoleId = role.Id,
-                    Status = UserStatus.Active,
+                    StatusId = (int)UserStatusEnum.Active,
+                    VerificationStatusId = (int)VerificationStatusEnum.Pending,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -181,6 +182,8 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                 user.PasswordSalt = salt;
                 user.PasswordHash = hash;
                 user.RoleId = role.Id;
+                user.StatusId = (int)UserStatusEnum.Active;
+                user.VerificationStatusId = (int)VerificationStatusEnum.Pending;
                 user.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -192,13 +195,9 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                     FullName = request.BasicInfo.FullName?.Trim() ?? string.Empty,
                     PhoneNumber = normalizedMobile,
                     AlternativeMobile = normalizedAltMobile,
-                    UserType = RoleNames.ServiceProvider,
-                    RoleId = role.Id,
                     Email = normalizedEmail,
-                    StatusId = statusId.Value,
                     IsAcceptedTerms = false,
-                    IsCompleted = true,
-                    IsActive = true
+                    IsCompleted = true
                 };
                 _context.UsersExtraInfos.Add(extraInfo);
             }
@@ -207,10 +206,7 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                 extraInfo.FullName = request.BasicInfo.FullName?.Trim() ?? string.Empty;
                 extraInfo.PhoneNumber = normalizedMobile;
                 extraInfo.AlternativeMobile = normalizedAltMobile;
-                extraInfo.UserType = RoleNames.ServiceProvider;
-                extraInfo.RoleId = role.Id;
                 extraInfo.Email = normalizedEmail;
-                extraInfo.StatusId = statusId.Value;
                 extraInfo.IsCompleted = true;
                 extraInfo.UpdatedAt = DateTime.UtcNow;
             }
@@ -236,6 +232,54 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
             address.StateId = request.Address.StateId;
             address.UpdatedAt = DateTime.UtcNow;
 
+            // Save the initial pincode preference to ServiceProviderPincodePreferences table
+            var normalizedPincode = request.Address.ZipCode?.Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedPincode))
+            {
+                var existingPreference = await _context.ServiceProviderPincodePreferences
+                    .FirstOrDefaultAsync(pref => pref.UserId == user.Id && pref.Pincode == normalizedPincode, cancellationToken);
+
+                if (existingPreference == null)
+                {
+                    // Mark any existing preferences as non-primary
+                    var existingPreferences = await _context.ServiceProviderPincodePreferences
+                        .Where(pref => pref.UserId == user.Id)
+                        .ToListAsync(cancellationToken);
+
+                    foreach (var pref in existingPreferences)
+                    {
+                        pref.IsPrimary = false;
+                        pref.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    // Add the new pincode preference as primary
+                    _context.ServiceProviderPincodePreferences.Add(new ServiceProviderPincodePreference
+                    {
+                        UserId = user.Id,
+                        Pincode = normalizedPincode,
+                        IsPrimary = true
+                    });
+                }
+                else
+                {
+                    // Update existing preference to be primary
+                    var existingPrimaries = await _context.ServiceProviderPincodePreferences
+                        .Where(pref => pref.UserId == user.Id && pref.IsPrimary)
+                        .ToListAsync(cancellationToken);
+
+                    foreach (var pref in existingPrimaries)
+                    {
+                        pref.IsPrimary = false;
+                        pref.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    existingPreference.IsPrimary = true;
+                    existingPreference.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
+            // Create verification record without admin assignment
+            // Admin will be assigned when documents are uploaded in the complete profile step
             var verification = await _context.ServiceProviderVerifications
                 .FirstOrDefaultAsync(v => v.ProviderUserId == user.Id && v.IsActive, cancellationToken);
 
@@ -244,7 +288,7 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                 _context.ServiceProviderVerifications.Add(new ServiceProviderVerification
                 {
                     ProviderUserId = user.Id,
-                    VerificationStatusId = statusId.Value,
+                    AssignedAdminId = null,
                     VerificationNotes = string.Empty,
                     RejectionReason = string.Empty,
                     IsActive = true

@@ -2,6 +2,7 @@ using System;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
+using APIServiceManagement.API.Attributes;
 using APIServiceManagement.API.Extensions;
 using APIServiceManagement.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -20,7 +21,7 @@ public class DashboardController : ControllerBase
         _bookingService = bookingService;
     }
 
-    [Authorize]
+    [AuthorizeCustomer]
     [HttpGet("customer")]
     public async Task<IActionResult> GetCustomerDashboard(CancellationToken cancellationToken)
     {
@@ -28,15 +29,21 @@ public class DashboardController : ControllerBase
         return result.ToActionResult();
     }
 
-    [Authorize]
+    [AuthorizeAdmin]
     [HttpGet("admin")]
     public async Task<IActionResult> GetAdminDashboard(CancellationToken cancellationToken)
     {
-        var result = await _bookingService.GetAdminDashboardAsync(GetUserId(), cancellationToken);
+        var userId = GetUserId();
+        if (!userId.HasValue)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _bookingService.GetAdminDashboardAsync(userId, cancellationToken);
         return result.ToActionResult();
     }
 
-    [Authorize]
+    [AuthorizeServiceProvider]
     [HttpGet("service-provider")]
     public async Task<IActionResult> GetServiceProviderDashboard(CancellationToken cancellationToken)
     {

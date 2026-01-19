@@ -59,7 +59,7 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Invalid role.");
         }
 
-        var statusId = await GetStatusIdAsync("PENDING");
+        var statusId = await GetStatusIdAsync(VerificationStatusCodes.Pending);
         if (!statusId.HasValue)
         {
             throw new InvalidOperationException("Verification status is not configured.");
@@ -78,7 +78,8 @@ public class AuthService : IAuthService
             PasswordHash = hash,
             PasswordSlug = Guid.NewGuid().ToString("N"),
             RoleId = role.Id,
-            Status = UserStatus.Active, 
+            StatusId = (int)UserStatusEnum.Active, 
+            VerificationStatusId = (int)VerificationStatusEnum.Pending,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -117,7 +118,7 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Customer role is not configured.");
         }
 
-        var statusId = await GetStatusIdAsync("PENDING");
+        var statusId = await GetStatusIdAsync(VerificationStatusCodes.Pending);
         if (!statusId.HasValue)
         {
             throw new InvalidOperationException("Verification status is not configured.");
@@ -137,7 +138,8 @@ public class AuthService : IAuthService
             PasswordHash = hash,
             PasswordSlug = Guid.NewGuid().ToString("N"),
             RoleId = role.Id,
-            Status = UserStatus.Active,
+            StatusId = (int)UserStatusEnum.Active,
+            VerificationStatusId = (int)VerificationStatusEnum.Pending,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -148,13 +150,9 @@ public class AuthService : IAuthService
             FullName = request.Name?.Trim() ?? string.Empty,
             PhoneNumber = normalizedMobile,
             AlternativeMobile = string.IsNullOrWhiteSpace(request.AlternativeMobile) ? string.Empty : NormalizeMobile(request.AlternativeMobile),
-            UserType = RoleNames.Customer,
-            RoleId = role.Id,
             Email = normalizedEmail,
-            StatusId = statusId.Value,
             IsAcceptedTerms = false,
-            IsCompleted = true,
-            IsActive = true
+            IsCompleted = true
         };
 
         var (refreshToken, refreshExpiresAt) = IssueRefreshToken(user);
@@ -182,7 +180,7 @@ public class AuthService : IAuthService
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.MobileNumber == normalizedMobile);
 
-        if (user == null || user.Status != UserStatus.Active)
+        if (user == null || user.StatusId != (int)UserStatusEnum.Active)
         {
             throw new InvalidOperationException("Invalid credentials.");
         }
@@ -212,7 +210,7 @@ public class AuthService : IAuthService
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.RefreshToken == refreshToken);
 
-        if (user == null || user.Status != UserStatus.Active)
+        if (user == null || user.StatusId != (int)UserStatusEnum.Active)
         {
             throw new InvalidOperationException("Invalid refresh token.");
         }
@@ -270,7 +268,7 @@ public class AuthService : IAuthService
                 Name = user.Name,
                 Email = user.Email,
                 MobileNumber = user.MobileNumber ?? string.Empty,
-                Status = user.Status,
+                Status = (UserStatusEnum)user.StatusId,
                 Role = roleName ?? RoleNames.Customer,
                 LastSignInAt = user.LastSignInAt
             }

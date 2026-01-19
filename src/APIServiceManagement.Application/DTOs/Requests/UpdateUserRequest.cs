@@ -22,6 +22,6 @@ public class UpdateUserRequest
     [Range(1, int.MaxValue)]
     public int RoleId { get; set; }
 
-    [EnumDataType(typeof(UserStatus))]
-    public UserStatus Status { get; set; }
+    [EnumDataType(typeof(UserStatusEnum))]
+    public UserStatusEnum Status { get; set; }
 }

@@ -32,6 +32,20 @@ public sealed class ServiceResult
         return new ServiceResult { StatusCode = HttpStatusCode.Unauthorized };
     }
 
+    public static ServiceResult Forbidden()
+    {
+        return new ServiceResult { StatusCode = HttpStatusCode.Forbidden };
+    }
+
+    public static ServiceResult Forbidden(string message)
+    {
+        return new ServiceResult
+        {
+            StatusCode = HttpStatusCode.Forbidden,
+            Payload = new MessageResponse { Message = message }
+        };
+    }
+
     public static ServiceResult NotFound(object payload)
     {
         return new ServiceResult { StatusCode = HttpStatusCode.NotFound, Payload = payload };

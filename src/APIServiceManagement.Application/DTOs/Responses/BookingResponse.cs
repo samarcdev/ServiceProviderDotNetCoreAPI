@@ -20,12 +20,20 @@ public class BookingRequestDto
     public Guid? ServiceProviderId { get; set; }
     public Guid? AdminId { get; set; }
     public string Status { get; set; } = string.Empty;
+    public int? ServiceTypeId { get; set; }
+    public string? ServiceTypeName { get; set; }
     public string? RequestDescription { get; set; }
     public string? CustomerAddress { get; set; }
+    public string? AddressLine1 { get; set; }
+    public string? AddressLine2 { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
     public string? CustomerPhone { get; set; }
-    public string? CustomerName { get; set; }
+    public string? AlternativeMobileNumber { get; set; }
+    public string? CustomerName { get; set; } // Kept for backward compatibility
     public DateTime? PreferredDate { get; set; }
     public TimeSpan? PreferredTime { get; set; }
+    public string? TimeSlot { get; set; }
     public decimal? EstimatedPrice { get; set; }
     public decimal? FinalPrice { get; set; }
     public string? AdminNotes { get; set; }

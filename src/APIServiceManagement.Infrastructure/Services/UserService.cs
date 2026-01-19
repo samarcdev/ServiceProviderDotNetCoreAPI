@@ -2,6 +2,7 @@ using APIServiceManagement.Application.DTOs.Requests;
 using APIServiceManagement.Application.DTOs.Responses;
 using APIServiceManagement.Application.Interfaces.Services;
 using APIServiceManagement.Domain.Entities;
+using APIServiceManagement.Domain.Enums;
 using APIServiceManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,7 +34,7 @@ public class UserService : IUserService
             Name = user.Name,
             Email = user.Email,
             MobileNumber = user.MobileNumber,
-            Status = user.Status,
+            Status = (UserStatusEnum)user.StatusId,
             Role = user.Role?.Name, 
             LastSignInAt = user.LastSignInAt
         };
@@ -49,7 +50,7 @@ public class UserService : IUserService
                 Name = u.Name,
                 Email = u.Email,
                 MobileNumber = u.MobileNumber,
-                Status = u.Status,
+                Status = (UserStatusEnum)u.StatusId,
                 Role = u.Role != null ? u.Role.Name : null,
                 LastSignInAt = u.LastSignInAt
             })
@@ -71,7 +72,7 @@ public class UserService : IUserService
             PasswordHash = hash,
             PasswordSlug = Guid.NewGuid().ToString("N"),
             RoleId = request.RoleId,
-            Status = request.Status,
+            StatusId = (int)request.Status,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -87,7 +88,7 @@ public class UserService : IUserService
             user.Name = request.Name;
             user.Email = request.Email;
             user.MobileNumber = request.MobileNumber?.Trim() ?? string.Empty;
-            user.Status = request.Status;
+            user.StatusId = (int)request.Status;
             user.RoleId = request.RoleId;
             user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
