@@ -770,6 +770,56 @@ public class BookingService : IBookingService
             .AsNoTracking()
             .CountAsync(b => b.CustomerId == userId.Value && b.StatusId == completedStatusId, cancellationToken);
 
+        // Batch load all required data to avoid N+1 queries
+        var serviceIds = recentBookings.Select(b => b.ServiceId).Distinct().ToList();
+        var serviceTypeIds = recentBookings
+            .Where(b => b.ServiceTypeId.HasValue)
+            .Select(b => b.ServiceTypeId.Value)
+            .Distinct()
+            .ToList();
+        
+        // Collect all user IDs (customers, service providers, admins)
+        var allUserIds = new HashSet<Guid>();
+        foreach (var booking in recentBookings)
+        {
+            allUserIds.Add(booking.CustomerId);
+            if (booking.ServiceProviderId.HasValue)
+            {
+                allUserIds.Add(booking.ServiceProviderId.Value);
+            }
+            if (booking.AdminId.HasValue)
+            {
+                allUserIds.Add(booking.AdminId.Value);
+            }
+        }
+
+        // Batch load all data in parallel
+        var servicesTask = _context.Services
+            .AsNoTracking()
+            .Where(s => serviceIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, cancellationToken);
+
+        var serviceTypesTask = serviceTypeIds.Any()
+            ? _context.ServiceTypes
+                .AsNoTracking()
+                .Where(st => serviceTypeIds.Contains(st.Id))
+                .ToDictionaryAsync(st => st.Id, cancellationToken)
+            : Task.FromResult(new Dictionary<int, ServiceType>());
+
+        var usersExtraTask = allUserIds.Any()
+            ? _context.UsersExtraInfos
+                .AsNoTracking()
+                .Where(info => info.UserId.HasValue && allUserIds.Contains(info.UserId.Value))
+                .ToDictionaryAsync(info => info.UserId.Value, cancellationToken)
+            : Task.FromResult(new Dictionary<Guid, UsersExtraInfo>());
+
+        // Wait for all queries to complete
+        await Task.WhenAll(servicesTask, serviceTypesTask, usersExtraTask);
+
+        var servicesDict = await servicesTask;
+        var serviceTypesDict = await serviceTypesTask;
+        var usersExtraDict = await usersExtraTask;
+
         var dashboard = new CustomerDashboardResponse
         {
             UserPincode = primaryPincode,
@@ -780,9 +830,14 @@ public class BookingService : IBookingService
             CompletedBookings = completedBookings
         };
 
+        // Build DTOs using pre-loaded data (no database queries in loop)
         foreach (var booking in recentBookings)
         {
-            dashboard.RecentBookings.Add(await BuildBookingDtoAsync(booking, cancellationToken));
+            dashboard.RecentBookings.Add(BuildBookingDtoAsync(
+                booking,
+                servicesDict,
+                serviceTypesDict,
+                usersExtraDict));
         }
 
         return ServiceResult.Ok(dashboard);
@@ -1695,6 +1750,107 @@ public class BookingService : IBookingService
                     Name = usersExtra.FirstOrDefault(u => u.UserId == booking.ServiceProviderId.Value)?.FullName,
                     Email = usersExtra.FirstOrDefault(u => u.UserId == booking.ServiceProviderId.Value)?.Email,
                     Phone = usersExtra.FirstOrDefault(u => u.UserId == booking.ServiceProviderId.Value)?.PhoneNumber
+                }
+                : null,
+            Admin = booking.AdminId.HasValue ? MapAdmin(booking.AdminId.Value) : null
+        };
+    }
+
+    // Optimized version that uses pre-loaded data to avoid N+1 queries
+    private BookingRequestDto BuildBookingDtoAsync(
+        BookingRequest booking,
+        Dictionary<int, Service> servicesDict,
+        Dictionary<int, ServiceType> serviceTypesDict,
+        Dictionary<Guid, UsersExtraInfo> usersExtraDict)
+    {
+        var service = servicesDict.GetValueOrDefault(booking.ServiceId);
+        var serviceType = booking.ServiceTypeId.HasValue 
+            ? serviceTypesDict.GetValueOrDefault(booking.ServiceTypeId.Value) 
+            : null;
+
+        BookingUserDto? MapUser(Guid userId)
+        {
+            var info = usersExtraDict.GetValueOrDefault(userId);
+            return info == null
+                ? new BookingUserDto { Id = userId }
+                : new BookingUserDto
+                {
+                    Id = userId,
+                    Name = info.FullName,
+                    Email = info.Email,
+                    Phone = info.PhoneNumber
+                };
+        }
+
+        BookingAdminDto? MapAdmin(Guid adminId)
+        {
+            var info = usersExtraDict.GetValueOrDefault(adminId);
+            return info == null
+                ? new BookingAdminDto { Id = adminId }
+                : new BookingAdminDto
+                {
+                    Id = adminId,
+                    Name = info.FullName,
+                    Email = info.Email
+                };
+        }
+
+        var serviceProviderInfo = booking.ServiceProviderId.HasValue
+            ? usersExtraDict.GetValueOrDefault(booking.ServiceProviderId.Value)
+            : null;
+
+        return new BookingRequestDto
+        {
+            Id = booking.Id,
+            CustomerId = booking.CustomerId,
+            ServiceId = booking.ServiceId,
+            ServiceTypeId = booking.ServiceTypeId,
+            ServiceTypeName = serviceType?.Name,
+            Pincode = booking.Pincode,
+            ServiceProviderId = booking.ServiceProviderId,
+            AdminId = booking.AdminId,
+            Status = booking.Status,
+            RequestDescription = booking.RequestDescription,
+            CustomerAddress = booking.CustomerAddress,
+            AddressLine1 = booking.AddressLine1,
+            AddressLine2 = booking.AddressLine2,
+            City = booking.City,
+            State = booking.State,
+            CustomerPhone = booking.CustomerPhone,
+            AlternativeMobileNumber = booking.AlternativeMobileNumber,
+            CustomerName = booking.CustomerName,
+            PreferredDate = booking.PreferredDate,
+            PreferredTime = booking.PreferredTime,
+            TimeSlot = booking.TimeSlot,
+            EstimatedPrice = booking.EstimatedPrice,
+            FinalPrice = booking.FinalPrice,
+            AdminNotes = booking.AdminNotes,
+            ServiceProviderNotes = booking.ServiceProviderNotes,
+            CustomerRating = booking.CustomerRating,
+            CustomerFeedback = booking.CustomerFeedback,
+            AssignedAt = booking.AssignedAt,
+            StartedAt = booking.StartedAt,
+            CompletedAt = booking.CompletedAt,
+            CreatedAt = booking.CreatedAt,
+            UpdatedAt = booking.UpdatedAt,
+            WorkingHours = booking.WorkingHours,
+            Service = service == null
+                ? null
+                : new BookingServiceDto
+                {
+                    Id = service.Id,
+                    ServiceName = service.ServiceName,
+                    Description = service.Description,
+                    CategoryId = service.CategoryId ?? 0
+                },
+            Customer = MapUser(booking.CustomerId),
+            ServiceProvider = booking.ServiceProviderId.HasValue
+                ? new BookingServiceProviderDto
+                {
+                    Id = booking.ServiceProviderId.Value,
+                    Name = serviceProviderInfo?.FullName,
+                    Email = serviceProviderInfo?.Email,
+                    Phone = serviceProviderInfo?.PhoneNumber
                 }
                 : null,
             Admin = booking.AdminId.HasValue ? MapAdmin(booking.AdminId.Value) : null
