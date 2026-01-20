@@ -158,17 +158,7 @@ public class AuthService : IAuthService
         var (refreshToken, refreshExpiresAt) = IssueRefreshToken(user);
         _context.Users.Add(user);
         _context.UsersExtraInfos.Add(extraInfo);
-        await _unitOfWork.BeginTransactionAsync();
-        try
-        {
-            await _context.SaveChangesAsync();
-            await _unitOfWork.CommitAsync();
-        }
-        catch
-        {
-            await _unitOfWork.RollbackAsync();
-            throw;
-        }
+        await _context.SaveChangesAsync();
 
         return BuildAuthResponse(user, role.Name, refreshToken, refreshExpiresAt);
     }
