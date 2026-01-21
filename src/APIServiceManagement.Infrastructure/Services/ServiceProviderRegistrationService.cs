@@ -197,7 +197,7 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                     AlternativeMobile = normalizedAltMobile,
                     Email = normalizedEmail,
                     IsAcceptedTerms = false,
-                    IsCompleted = true
+                    IsCompleted = false
                 };
                 _context.UsersExtraInfos.Add(extraInfo);
             }
@@ -207,7 +207,7 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                 extraInfo.PhoneNumber = normalizedMobile;
                 extraInfo.AlternativeMobile = normalizedAltMobile;
                 extraInfo.Email = normalizedEmail;
-                extraInfo.IsCompleted = true;
+                extraInfo.IsCompleted = false;
                 extraInfo.UpdatedAt = DateTime.UtcNow;
             }
 
