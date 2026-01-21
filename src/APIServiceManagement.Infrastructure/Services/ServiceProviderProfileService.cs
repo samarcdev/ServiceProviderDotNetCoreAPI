@@ -605,11 +605,18 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
         if (verification == null)
         {
             // Always assign an admin when creating new verification
-            // If no state-specific admin found, GetDefaultAdminIdAsync should return default admin
+            // If no state-specific admin found, ensure default admin is assigned
+            var adminIdToAssign = assignedAdminId;
+            if (!adminIdToAssign.HasValue)
+            {
+                // Fallback to default admin if no admin was resolved
+                adminIdToAssign = await GetDefaultAdminIdAsync(cancellationToken);
+            }
+
             verification = new ServiceProviderVerification
             {
                 ProviderUserId = userId,
-                AssignedAdminId = assignedAdminId,
+                AssignedAdminId = adminIdToAssign,
                 VerificationNotes = string.Empty,
                 RejectionReason = string.Empty,
                 IsActive = true
@@ -624,11 +631,25 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
         }
         else
         {
-            // Update admin assignment if not already assigned and an admin was found
+            // Update admin assignment if not already assigned
             // This handles the case where verification was created during registration without admin
-            if (!verification.AssignedAdminId.HasValue && assignedAdminId.HasValue)
+            if (!verification.AssignedAdminId.HasValue)
             {
-                verification.AssignedAdminId = assignedAdminId;
+                // Ensure we always assign an admin - use resolved admin or fallback to default
+                if (assignedAdminId.HasValue)
+                {
+                    verification.AssignedAdminId = assignedAdminId;
+                }
+                else
+                {
+                    // Fallback: explicitly get default admin if no admin was resolved
+                    // This ensures default admin is always assigned when no state admin exists
+                    var defaultAdminId = await GetDefaultAdminIdAsync(cancellationToken);
+                    if (defaultAdminId.HasValue)
+                    {
+                        verification.AssignedAdminId = defaultAdminId;
+                    }
+                }
             }
 
             // If verification was rejected or is in a non-pending state, reset to pending when documents are updated
