@@ -624,7 +624,6 @@ public class BookingService : IBookingService
         booking.AdminId = adminId.Value;
         booking.AdminNotes = request.AdminNotes ?? booking.AdminNotes;
         booking.EstimatedPrice = request.EstimatedPrice ?? booking.EstimatedPrice;
-        booking.UpdatedAt = DateTime.UtcNow;
 
         if (string.Equals(request.Status, VerificationStatusStrings.Rejected, StringComparison.OrdinalIgnoreCase))
         {
@@ -708,7 +707,6 @@ public class BookingService : IBookingService
                 booking.StartedAt = startedAt;
             }
         }
-        booking.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -1135,7 +1133,6 @@ public class BookingService : IBookingService
                 foreach (var preference in existingPrimaries)
                 {
                     preference.IsPrimary = false;
-                    preference.UpdatedAt = DateTime.UtcNow;
                 }
             }
 
@@ -1145,7 +1142,6 @@ public class BookingService : IBookingService
             if (existingPreference != null)
             {
                 existingPreference.IsPrimary = request.IsPrimary;
-                existingPreference.UpdatedAt = DateTime.UtcNow;
             }
             else
             {
@@ -1169,7 +1165,6 @@ public class BookingService : IBookingService
                 foreach (var preference in existingPrimaries)
                 {
                     preference.IsPrimary = false;
-                    preference.UpdatedAt = DateTime.UtcNow;
                 }
             }
 
@@ -1179,7 +1174,6 @@ public class BookingService : IBookingService
             if (existingPreference != null)
             {
                 existingPreference.IsPrimary = request.IsPrimary;
-                existingPreference.UpdatedAt = DateTime.UtcNow;
             }
             else
             {
@@ -1233,7 +1227,6 @@ public class BookingService : IBookingService
                 if (otherPreferences != null)
                 {
                     otherPreferences.IsPrimary = true;
-                    otherPreferences.UpdatedAt = DateTime.UtcNow;
                 }
             }
 
@@ -1261,7 +1254,6 @@ public class BookingService : IBookingService
                 if (otherPreferences != null)
                 {
                     otherPreferences.IsPrimary = true;
-                    otherPreferences.UpdatedAt = DateTime.UtcNow;
                 }
             }
 
@@ -1455,7 +1447,6 @@ public class BookingService : IBookingService
         // Update booking status to cancelled
         booking.StatusId = cancelledStatusId;
         booking.Status = BookingStatusStrings.Cancelled; // Backward compatibility
-        booking.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
 

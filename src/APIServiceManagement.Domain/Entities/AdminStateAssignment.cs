@@ -11,17 +11,19 @@ public class AdminStateAssignment
     [Column("id")]
     public int Id { get; set; }
     [Column("admin_user_id")]
-    public Guid AdminUserId { get; set; }
+    public Guid AdminUserId { get; set; } 
     [Column("state_id")]
     public int StateId { get; set; } 
     [Column("assigned_at")]
     public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
     [Column("assigned_by")]
-    public Guid? AssignedBy { get; set; }
+    public Guid? AssignedByUserId { get; set; }
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Column("updated_at")]
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+
 
     // Navigation properties
     public User AdminUser { get; set; }

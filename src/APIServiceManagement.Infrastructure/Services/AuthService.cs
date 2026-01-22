@@ -79,9 +79,7 @@ public class AuthService : IAuthService
             PasswordSlug = Guid.NewGuid().ToString("N"),
             RoleId = role.Id,
             StatusId = (int)UserStatusEnum.Active, 
-            VerificationStatusId = (int)VerificationStatusEnum.Pending,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            VerificationStatusId = (int)VerificationStatusEnum.Pending
         };
 
         var (refreshToken, refreshExpiresAt) = IssueRefreshToken(user);
@@ -139,9 +137,7 @@ public class AuthService : IAuthService
             PasswordSlug = Guid.NewGuid().ToString("N"),
             RoleId = role.Id,
             StatusId = (int)UserStatusEnum.Active,
-            VerificationStatusId = (int)VerificationStatusEnum.Pending,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            VerificationStatusId = (int)VerificationStatusEnum.Pending
         };
 
         var extraInfo = new UsersExtraInfo
@@ -181,7 +177,6 @@ public class AuthService : IAuthService
         }
 
         user.LastSignInAt = DateTime.UtcNow;
-        user.UpdatedAt = DateTime.UtcNow;
         var (refreshToken, refreshExpiresAt) = IssueRefreshToken(user);
         await _context.SaveChangesAsync();
 
@@ -211,7 +206,6 @@ public class AuthService : IAuthService
         }
 
         var (newRefreshToken, refreshExpiresAt) = IssueRefreshToken(user);
-        user.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
 
         return BuildAuthResponse(user, user.Role?.Name ?? RoleNames.Customer, newRefreshToken, refreshExpiresAt);

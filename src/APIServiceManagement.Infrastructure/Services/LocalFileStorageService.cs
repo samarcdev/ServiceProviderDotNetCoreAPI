@@ -52,4 +52,29 @@ public class LocalFileStorageService : IFileStorageService
             ContentType = file.ContentType ?? string.Empty
         };
     }
+
+    public Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return Task.FromResult(false);
+        }
+
+        try
+        {
+            var fullPath = Path.Combine(_rootPath, relativePath.Replace("/", "\\"));
+            
+            if (File.Exists(fullPath))
+            {
+                File.Delete(fullPath);
+                return Task.FromResult(true);
+            }
+
+            return Task.FromResult(false);
+        }
+        catch
+        {
+            return Task.FromResult(false);
+        }
+    }
 }

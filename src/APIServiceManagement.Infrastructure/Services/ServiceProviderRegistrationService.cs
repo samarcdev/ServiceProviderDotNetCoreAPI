@@ -168,9 +168,7 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                     PasswordSlug = Guid.NewGuid().ToString("N"),
                     RoleId = role.Id,
                     StatusId = (int)UserStatusEnum.Active,
-                    VerificationStatusId = (int)VerificationStatusEnum.Pending,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    VerificationStatusId = (int)VerificationStatusEnum.Pending
                 };
                 _context.Users.Add(user);
             }
@@ -184,7 +182,6 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                 user.RoleId = role.Id;
                 user.StatusId = (int)UserStatusEnum.Active;
                 user.VerificationStatusId = (int)VerificationStatusEnum.Pending;
-                user.UpdatedAt = DateTime.UtcNow;
             }
 
             if (extraInfo == null)
@@ -208,7 +205,6 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                 extraInfo.AlternativeMobile = normalizedAltMobile;
                 extraInfo.Email = normalizedEmail;
                 extraInfo.IsCompleted = false;
-                extraInfo.UpdatedAt = DateTime.UtcNow;
             }
 
             var address = await _context.UsersAddresses
@@ -230,7 +226,6 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
             address.ZipCode = request.Address.ZipCode?.Trim() ?? string.Empty;
             address.CityId = request.Address.CityId;
             address.StateId = request.Address.StateId;
-            address.UpdatedAt = DateTime.UtcNow;
 
             // Save the initial pincode preference to ServiceProviderPincodePreferences table
             var normalizedPincode = request.Address.ZipCode?.Trim();
@@ -249,7 +244,6 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                     foreach (var pref in existingPreferences)
                     {
                         pref.IsPrimary = false;
-                        pref.UpdatedAt = DateTime.UtcNow;
                     }
 
                     // Add the new pincode preference as primary
@@ -270,11 +264,9 @@ public class ServiceProviderRegistrationService : IServiceProviderRegistrationSe
                     foreach (var pref in existingPrimaries)
                     {
                         pref.IsPrimary = false;
-                        pref.UpdatedAt = DateTime.UtcNow;
                     }
 
                     existingPreference.IsPrimary = true;
-                    existingPreference.UpdatedAt = DateTime.UtcNow;
                 }
             }
 

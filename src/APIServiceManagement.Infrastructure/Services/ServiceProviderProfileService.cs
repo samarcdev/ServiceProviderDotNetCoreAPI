@@ -312,7 +312,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
             if (extraInfo.IsCompleted != isComplete)
             {
                 extraInfo.IsCompleted = isComplete;
-                extraInfo.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync(cancellationToken);
             }
         }
@@ -359,12 +358,10 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
 
         user.Name = normalizedFullName;
         user.MobileNumber = normalizedPhone;
-        user.UpdatedAt = DateTime.UtcNow;
 
         extraInfo.FullName = normalizedFullName;
         extraInfo.PhoneNumber = normalizedPhone;
         extraInfo.AlternativeMobile = normalizedAlt;
-        extraInfo.UpdatedAt = DateTime.UtcNow;
 
         if (string.IsNullOrWhiteSpace(extraInfo.Email))
         {
@@ -429,7 +426,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
             existingDocument.FileName = storageResult.OriginalFileName;
             existingDocument.FileSize = storageResult.Size;
             existingDocument.UploadedAt = DateTime.UtcNow;
-            existingDocument.UpdatedAt = DateTime.UtcNow;
             existingDocument.IsActive = true;
         }
 
@@ -442,7 +438,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
             if (extraInfo.IsCompleted != isComplete)
             {
                 extraInfo.IsCompleted = isComplete;
-                extraInfo.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync(cancellationToken);
             }
         }
@@ -481,7 +476,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
         step.StepData = payload;
         step.IsCompleted = !string.IsNullOrWhiteSpace(experience);
         step.CompletedAt = step.IsCompleted ? DateTime.UtcNow : null;
-        step.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
     }
@@ -499,7 +493,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
             foreach (var preference in existingPreferences)
             {
                 preference.IsPrimary = string.Equals(preference.Pincode, normalizedPrimary, StringComparison.OrdinalIgnoreCase);
-                preference.UpdatedAt = DateTime.UtcNow;
             }
         }
 
@@ -523,7 +516,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
             else
             {
                 existing.IsPrimary = isPrimary || existing.IsPrimary;
-                existing.UpdatedAt = DateTime.UtcNow;
             }
         }
 
@@ -661,8 +653,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
                 verification.VerifiedAt = null;
                 verification.VerifiedBy = null;
             }
-
-            verification.UpdatedAt = DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -799,7 +789,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
         foreach (var providerService in servicesToDeactivate)
         {
             providerService.IsActive = false;
-            providerService.UpdatedAt = DateTime.UtcNow;
         }
 
         // Get existing service IDs (both active and inactive)
@@ -817,9 +806,7 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
                 UserId = userId.Value,
                 ServiceId = serviceId,
                 Availability = "available", // Default availability
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                IsActive = true
             });
         }
 
@@ -831,7 +818,6 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
         foreach (var providerService in servicesToReactivate)
         {
             providerService.IsActive = true;
-            providerService.UpdatedAt = DateTime.UtcNow;
         }
 
         try

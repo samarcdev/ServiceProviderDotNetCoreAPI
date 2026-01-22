@@ -210,6 +210,33 @@ public class AppDbContext : DbContext
             .HasForeignKey(history => history.StatusId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Configure Category Image and Icon as nullable
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.Property(e => e.Image)
+                .IsRequired(false);
+            entity.Property(e => e.Icon)
+                .IsRequired(false);
+        });
+
+        // Configure Service Image and Icon as nullable
+        modelBuilder.Entity<Service>(entity =>
+        {
+            entity.Property(e => e.Image)
+                .IsRequired(false);
+            entity.Property(e => e.Icon)
+                .IsRequired(false);
+        });
+
+        // Configure AdminStateAssignment - one state can only be assigned to one admin
+        modelBuilder.Entity<AdminStateAssignment>(entity =>
+        {
+            // Unique constraint: one state can only be assigned to one admin
+            entity.HasIndex(e => e.StateId)
+                .IsUnique()
+                .HasDatabaseName("UQ_AdminStateAssignments_StateId");
+        });
+
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
