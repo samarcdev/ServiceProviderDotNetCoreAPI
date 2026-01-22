@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IBannerService, BannerService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<IAdminService, AdminService>();
+        services.AddScoped<IMasterAdminService, MasterAdminService>();
         services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();

@@ -8,4 +8,5 @@ namespace APIServiceManagement.Application.Interfaces.Services;
 public interface IFileStorageService
 {
     Task<FileStorageResult> SaveAsync(FileUploadRequest file, string subfolder, CancellationToken cancellationToken = default);
+    Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default);
 }

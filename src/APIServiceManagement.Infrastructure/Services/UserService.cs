@@ -72,9 +72,7 @@ public class UserService : IUserService
             PasswordHash = hash,
             PasswordSlug = Guid.NewGuid().ToString("N"),
             RoleId = request.RoleId,
-            StatusId = (int)request.Status,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            StatusId = (int)request.Status
         };
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
@@ -90,7 +88,6 @@ public class UserService : IUserService
             user.MobileNumber = request.MobileNumber?.Trim() ?? string.Empty;
             user.StatusId = (int)request.Status;
             user.RoleId = request.RoleId;
-            user.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
     }
