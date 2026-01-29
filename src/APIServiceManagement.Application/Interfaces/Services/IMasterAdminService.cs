@@ -57,4 +57,10 @@ public interface IMasterAdminService
     
     // Bookings (all bookings for master admin)
     Task<ServiceResult> GetAllBookingsAsync(List<string>? statuses, CancellationToken cancellationToken = default);
+
+    Task<ServiceResult> GetAllDiscountAsync(CancellationToken cancellationToken = default);
+
+    Task<ServiceResult> CreateDiscountAsync(CreateDiscountRequest request, CancellationToken cancellationToken = default);
+    Task<ServiceResult> UpdateDiscountAsync(UpdateDiscountRequest request, CancellationToken cancellationToken = default);
+    Task<ServiceResult> DeleteDiscountAsync(int discountId, CancellationToken cancellationToken = default);
 }
