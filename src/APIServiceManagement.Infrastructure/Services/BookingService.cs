@@ -621,6 +621,9 @@ public class BookingService : IBookingService
             return ServiceResult.Ok(new BookingResponse { Success = false, Message = "Booking not found" });
         }
 
+        var previousProviderId = booking.ServiceProviderId;
+        var isReassignment = previousProviderId.HasValue && previousProviderId.Value != request.ServiceProviderId;
+
         booking.AdminId = adminId.Value;
         booking.AdminNotes = request.AdminNotes ?? booking.AdminNotes;
         booking.EstimatedPrice = request.EstimatedPrice ?? booking.EstimatedPrice;
@@ -630,15 +633,64 @@ public class BookingService : IBookingService
             var rejectedStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.Rejected, cancellationToken);
             booking.StatusId = rejectedStatusId;
             booking.Status = BookingStatusStrings.Rejected; // Backward compatibility
+
+            // If there was a previous assignment, mark it as unassigned with rejection reason
+            if (previousProviderId.HasValue)
+            {
+                var previousAssignment = await _context.BookingAssignments
+                    .FirstOrDefaultAsync(ba => ba.BookingRequestId == request.BookingId && ba.IsCurrent, cancellationToken);
+                
+                if (previousAssignment != null)
+                {
+                    previousAssignment.IsCurrent = false;
+                    previousAssignment.UnassignedAt = DateTime.UtcNow;
+                    previousAssignment.UnassignedReason = request.AdminNotes ?? "Booking rejected by admin";
+                    previousAssignment.ReasonType = "rejection";
+                }
+            }
         }
         else
         {
+            // If reassigning, mark previous assignment as not current
+            if (isReassignment && previousProviderId.HasValue)
+            {
+                var previousAssignment = await _context.BookingAssignments
+                    .FirstOrDefaultAsync(ba => ba.BookingRequestId == request.BookingId && ba.IsCurrent, cancellationToken);
+                
+                if (previousAssignment != null)
+                {
+                    previousAssignment.IsCurrent = false;
+                    previousAssignment.UnassignedAt = DateTime.UtcNow;
+                    previousAssignment.UnassignedReason = request.AdminNotes ?? "Reassigned to another service provider";
+                    previousAssignment.ReasonType = "reassignment";
+                }
+            }
+
             booking.ServiceProviderId = request.ServiceProviderId;
             var statusCode = string.IsNullOrWhiteSpace(request.Status) ? BookingStatusCodes.Assigned : request.Status.ToUpperInvariant();
             var statusId = await GetStatusIdByCodeAsync(statusCode, cancellationToken);
             booking.StatusId = statusId;
             booking.Status = request.Status ?? BookingStatusStrings.Assigned; // Backward compatibility
             booking.AssignedAt = DateTime.UtcNow;
+
+            // Create new booking assignment record
+            if (request.ServiceProviderId.HasValue)
+            {
+                var assignment = new BookingAssignment
+                {
+                    BookingRequestId = request.BookingId,
+                    ServiceProviderId = request.ServiceProviderId.Value,
+                    AssignedByUserId = adminId.Value,
+                    AssignedAt = DateTime.UtcNow,
+                    IsCurrent = true,
+                    Notes = request.AdminNotes,
+                    ReasonType = isReassignment ? "reassignment" : "initial_assignment",
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.BookingAssignments.Add(assignment);
+            }
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -659,9 +711,10 @@ public class BookingService : IBookingService
             return ServiceResult.Ok(new BookingResponse { Success = false, Message = "Booking not found" });
         }
 
+        string? statusCode = null;
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
-            var statusCode = request.Status.ToUpperInvariant();
+            statusCode = request.Status.Trim().ToUpperInvariant();
             var statusId = await GetStatusIdByCodeAsync(statusCode, cancellationToken);
             booking.StatusId = statusId;
             booking.Status = request.Status; // Backward compatibility
@@ -705,6 +758,41 @@ public class BookingService : IBookingService
             else
             {
                 booking.StartedAt = startedAt;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(statusCode))
+        {
+            if (statusCode == BookingStatusCodes.Completed)
+            {
+                if (!booking.CompletedAt.HasValue)
+                {
+                    booking.CompletedAt = DateTime.UtcNow;
+                }
+
+                var currentAssignment = await _context.BookingAssignments
+                    .FirstOrDefaultAsync(ba => ba.BookingRequestId == bookingId && ba.IsCurrent, cancellationToken);
+
+                if (currentAssignment != null)
+                {
+                    currentAssignment.IsCurrent = false;
+                    currentAssignment.UnassignedAt = DateTime.UtcNow;
+                    currentAssignment.UnassignedReason = "Booking completed";
+                    currentAssignment.ReasonType = "completed";
+                }
+            }
+            else if (statusCode == BookingStatusCodes.Cancelled)
+            {
+                var currentAssignment = await _context.BookingAssignments
+                    .FirstOrDefaultAsync(ba => ba.BookingRequestId == bookingId && ba.IsCurrent, cancellationToken);
+
+                if (currentAssignment != null)
+                {
+                    currentAssignment.IsCurrent = false;
+                    currentAssignment.UnassignedAt = DateTime.UtcNow;
+                    currentAssignment.UnassignedReason = "Booking cancelled";
+                    currentAssignment.ReasonType = "cancelled";
+                }
             }
         }
 
@@ -791,32 +879,25 @@ public class BookingService : IBookingService
             }
         }
 
-        // Batch load all data in parallel
-        var servicesTask = _context.Services
+        // Load data sequentially to avoid concurrent DbContext operations
+        var servicesDict = await _context.Services
             .AsNoTracking()
             .Where(s => serviceIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, cancellationToken);
 
-        var serviceTypesTask = serviceTypeIds.Any()
-            ? _context.ServiceTypes
+        var serviceTypesDict = serviceTypeIds.Any()
+            ? await _context.ServiceTypes
                 .AsNoTracking()
                 .Where(st => serviceTypeIds.Contains(st.Id))
                 .ToDictionaryAsync(st => st.Id, cancellationToken)
-            : Task.FromResult(new Dictionary<int, ServiceType>());
+            : new Dictionary<int, ServiceType>();
 
-        var usersExtraTask = allUserIds.Any()
-            ? _context.UsersExtraInfos
+        var usersExtraDict = allUserIds.Any()
+            ? await _context.UsersExtraInfos
                 .AsNoTracking()
                 .Where(info => info.UserId.HasValue && allUserIds.Contains(info.UserId.Value))
                 .ToDictionaryAsync(info => info.UserId.Value, cancellationToken)
-            : Task.FromResult(new Dictionary<Guid, UsersExtraInfo>());
-
-        // Wait for all queries to complete
-        await Task.WhenAll(servicesTask, serviceTypesTask, usersExtraTask);
-
-        var servicesDict = await servicesTask;
-        var serviceTypesDict = await serviceTypesTask;
-        var usersExtraDict = await usersExtraTask;
+            : new Dictionary<Guid, UsersExtraInfo>();
 
         var dashboard = new CustomerDashboardResponse
         {
@@ -1448,6 +1529,17 @@ public class BookingService : IBookingService
         booking.StatusId = cancelledStatusId;
         booking.Status = BookingStatusStrings.Cancelled; // Backward compatibility
 
+        var currentAssignment = await _context.BookingAssignments
+            .FirstOrDefaultAsync(ba => ba.BookingRequestId == bookingId && ba.IsCurrent, cancellationToken);
+
+        if (currentAssignment != null)
+        {
+            currentAssignment.IsCurrent = false;
+            currentAssignment.UnassignedAt = DateTime.UtcNow;
+            currentAssignment.UnassignedReason = "Booking cancelled by customer";
+            currentAssignment.ReasonType = "cancelled";
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
 
         return ServiceResult.Ok(new BookingResponse
@@ -1848,7 +1940,7 @@ public class BookingService : IBookingService
         };
     }
 
-    public async Task<ServiceResult> GetAvailableServiceProvidersAsync(int serviceId, string pincode, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult> GetAvailableServiceProvidersAsync(int serviceId, string pincode, DateTime? preferredDate = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -1859,75 +1951,144 @@ public class BookingService : IBookingService
 
             var normalizedPincode = pincode.Trim();
             var approvedStatusId = (int)VerificationStatusEnum.Approved;
+            var serviceProviderRoleId = (int)RoleEnum.ServiceProvider;
+            var checkDate = preferredDate?.Date ?? DateTime.UtcNow.Date;
 
             // Get service providers who:
             // 1. Offer this service (ProviderService)
             // 2. Serve this pincode (ServiceProviderPincodePreference)
             // 3. Are verified/approved (User.VerificationStatusId == Approved)
             // 4. Are active
+            // 5. Are NOT on leave for the check date
 
-            var serviceProviderRoleId = (int)RoleEnum.ServiceProvider;
-
-            var availableProviders = await (
+            var providerIds = await (
                 from ps in _context.ProviderServices
                 join pref in _context.ServiceProviderPincodePreferences
                     on ps.UserId equals pref.UserId
                 join user in _context.Users
                     on ps.UserId equals user.Id
-                join userInfo in _context.UsersExtraInfos
-                    on ps.UserId equals userInfo.UserId
                 where ps.ServiceId == serviceId
                     && ps.IsActive
                     && pref.Pincode == normalizedPincode
                     && user.VerificationStatusId == approvedStatusId
                     && user.RoleId == serviceProviderRoleId
-                select new AvailableServiceProvider
-                {
-                    Id = ps.UserId,
-                    Name = userInfo.FullName,
-                    Email = userInfo.Email,
-                    Phone = string.IsNullOrWhiteSpace(userInfo.PhoneNumber) ? null : userInfo.PhoneNumber
-                }
+                select ps.UserId
             ).Distinct().ToListAsync(cancellationToken);
 
             // If no providers found with verification, try to get providers without verification check
-            // (fallback for providers who might not have verification record yet)
-            if (availableProviders.Count == 0)
+            //if (providerIds.Count == 0)
+            //{
+            //    providerIds = await (
+            //        from ps in _context.ProviderServices
+            //        join pref in _context.ServiceProviderPincodePreferences
+            //            on ps.UserId equals pref.UserId
+            //        join user in _context.Users
+            //            on ps.UserId equals user.Id
+            //        where ps.ServiceId == serviceId
+            //            && ps.IsActive
+            //            && pref.Pincode == normalizedPincode
+            //            && user.RoleId == serviceProviderRoleId
+            //        select ps.UserId
+            //    ).Distinct().ToListAsync(cancellationToken);
+            //}
+
+            // Filter out providers on leave
+            var providersOnLeave = await _context.ServiceProviderLeaveDays
+                .Where(l => providerIds.Contains(l.ServiceProviderId)
+                    && l.LeaveDate == checkDate)
+                .Select(l => l.ServiceProviderId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            var availableProviderIds = providerIds.Except(providersOnLeave).ToList();
+
+            if (availableProviderIds.Count == 0)
             {
-                availableProviders = await (
-                    from ps in _context.ProviderServices
-                    join pref in _context.ServiceProviderPincodePreferences
-                        on ps.UserId equals pref.UserId
-                    join user in _context.Users
-                        on ps.UserId equals user.Id
-                    join userInfo in _context.UsersExtraInfos
-                        on ps.UserId equals userInfo.UserId
-                    where ps.ServiceId == serviceId
-                        && ps.IsActive
-                        && pref.Pincode == normalizedPincode
-                        && user.RoleId == serviceProviderRoleId
-                    select new AvailableServiceProvider
-                    {
-                        Id = ps.UserId,
-                        Name = userInfo.FullName,
-                        Email = userInfo.Email,
-                        Phone = string.IsNullOrWhiteSpace(userInfo.PhoneNumber) ? null : userInfo.PhoneNumber
-                    }
-                ).Distinct().ToListAsync(cancellationToken);
+                var emptyResponse = new AvailableServiceProvidersResponse
+                {
+                    Success = true,
+                    ServiceProviders = new List<AvailableServiceProvider>(),
+                    Message = "No service providers available for this service in the specified pincode"
+                };
+                return ServiceResult.Ok(emptyResponse);
             }
 
-            var response = new AvailableServiceProvidersResponse
+            // Get provider details with ratings and stats
+            var providersWithDetails = await _context.UsersExtraInfos
+                .Where(u => u.UserId.HasValue && availableProviderIds.Contains(u.UserId.Value))
+                .Select(u => new
+                {
+                    ProviderId = u.UserId!.Value,
+                    Name = u.FullName,
+                    Email = u.Email,
+                    Phone = u.PhoneNumber
+                })
+                .ToListAsync(cancellationToken);
+
+            // Get ratings for each provider
+            var ratings = await _context.Ratings
+                .Where(r => availableProviderIds.Contains(r.RatingTo))
+                .GroupBy(r => r.RatingTo)
+                .Select(g => new
+                {
+                    ProviderId = g.Key,
+                    AverageRating = g.Average(r => (decimal?)r.RatingValue) ?? 0,
+                    TotalRatings = g.Count()
+                })
+                .ToListAsync(cancellationToken);
+
+            var ratingsDict = ratings.ToDictionary(r => r.ProviderId, r => new { r.AverageRating, r.TotalRatings });
+
+            // Get booking stats for each provider
+            var pendingStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.Pending, cancellationToken);
+            var inProgressStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.InProgress, cancellationToken);
+            var completedStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.Completed, cancellationToken);
+            var assignedStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.Assigned, cancellationToken);
+
+            var bookingStats = await _context.BookingRequests
+                .Where(b => b.ServiceProviderId.HasValue && availableProviderIds.Contains(b.ServiceProviderId.Value))
+                .GroupBy(b => b.ServiceProviderId!.Value)
+                .Select(g => new
+                {
+                    ProviderId = g.Key,
+                    ActiveRequests = g.Count(b => b.StatusId == inProgressStatusId || b.StatusId == assignedStatusId),
+                    PendingRequests = g.Count(b => b.StatusId == pendingStatusId),
+                    CompletedRequests = g.Count(b => b.StatusId == completedStatusId)
+                })
+                .ToListAsync(cancellationToken);
+
+            var statsDict = bookingStats.ToDictionary(s => s.ProviderId, s => new { s.ActiveRequests, s.PendingRequests, s.CompletedRequests });
+
+            // Build response
+            var availableProviders = providersWithDetails.Select(p => new AvailableServiceProvider
+            {
+                Id = p.ProviderId,
+                Name = p.Name,
+                Email = p.Email,
+                Phone = string.IsNullOrWhiteSpace(p.Phone) ? null : p.Phone,
+                AverageRating = ratingsDict.ContainsKey(p.ProviderId) ? ratingsDict[p.ProviderId].AverageRating : null,
+                TotalRatings = ratingsDict.ContainsKey(p.ProviderId) ? ratingsDict[p.ProviderId].TotalRatings : 0,
+                ActiveRequests = statsDict.ContainsKey(p.ProviderId) ? statsDict[p.ProviderId].ActiveRequests : 0,
+                PendingRequests = statsDict.ContainsKey(p.ProviderId) ? statsDict[p.ProviderId].PendingRequests : 0,
+                CompletedRequests = statsDict.ContainsKey(p.ProviderId) ? statsDict[p.ProviderId].CompletedRequests : 0
+            })
+            .OrderByDescending(p => p.AverageRating ?? 0)
+            .ThenByDescending(p => p.CompletedRequests)
+            .ToList();
+
+            var providerCount = availableProviders.Count;
+            var finalResponse = new AvailableServiceProvidersResponse
             {
                 Success = true,
                 ServiceProviders = availableProviders,
-                Message = availableProviders.Count > 0 
-                    ? $"Found {availableProviders.Count} available service provider(s)" 
+                Message = providerCount > 0 
+                    ? $"Found {providerCount} available service provider(s)" 
                     : "No service providers available for this service in the specified pincode"
             };
 
-            return ServiceResult.Ok(response);
+            return ServiceResult.Ok(finalResponse);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             return new ServiceResult
             {
@@ -1935,7 +2096,7 @@ public class BookingService : IBookingService
                 Payload = new AvailableServiceProvidersResponse
                 {
                     Success = false,
-                    Message = "An error occurred while retrieving available service providers",
+                    Message = $"An error occurred while retrieving available service providers: {ex.Message}",
                     ServiceProviders = new List<AvailableServiceProvider>()
                 }
             };

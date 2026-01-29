@@ -143,9 +143,10 @@ public class BookingsController : ControllerBase
     public async Task<IActionResult> GetAvailableServiceProviders(
         [FromQuery] int serviceId,
         [FromQuery] string pincode,
-        CancellationToken cancellationToken)
+        [FromQuery] DateTime? preferredDate,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _bookingService.GetAvailableServiceProvidersAsync(serviceId, pincode, cancellationToken);
+        var result = await _bookingService.GetAvailableServiceProvidersAsync(serviceId, pincode, preferredDate, cancellationToken);
         return result.ToActionResult();
     }
 

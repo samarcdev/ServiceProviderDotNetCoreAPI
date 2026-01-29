@@ -38,5 +38,5 @@ public interface IBookingService
     Task<ServiceResult> GetAvailableTimeSlotsAsync(DateTime date, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetBookingSummaryAsync(Guid? userId, int serviceId, int? serviceTypeId, string pincode, DateTime? preferredDate, string? timeSlot, CancellationToken cancellationToken = default);
     Task<ServiceResult> CancelBookingAsync(Guid? userId, Guid bookingId, CancellationToken cancellationToken = default);
-    Task<ServiceResult> GetAvailableServiceProvidersAsync(int serviceId, string pincode, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetAvailableServiceProvidersAsync(int serviceId, string pincode, DateTime? preferredDate = null, CancellationToken cancellationToken = default);
 }

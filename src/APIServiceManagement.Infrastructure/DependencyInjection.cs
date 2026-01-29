@@ -66,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<IMasterDataService, MasterDataService>();
         services.AddScoped<IBannerService, BannerService>();
         services.AddScoped<IBookingService, BookingService>();
+        services.AddScoped<ILeaveService, LeaveService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IMasterAdminService, MasterAdminService>();
         services.AddScoped<IRoleService, RoleService>();
