@@ -39,6 +39,9 @@ public class AppDbContext : DbContext
     public DbSet<UsersExtraInfo> UsersExtraInfos { get; set; }
     public DbSet<UserStatus> UserStatuses { get; set; }
     public DbSet<VerificationStatus> VerificationStatuses { get; set; }
+    public DbSet<ServiceProviderLeaveDay> ServiceProviderLeaveDays { get; set; }
+    public DbSet<Rating> Ratings { get; set; }
+    public DbSet<BookingAssignment> BookingAssignments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -237,6 +240,61 @@ public class AppDbContext : DbContext
                 .HasDatabaseName("UQ_AdminStateAssignments_StateId");
         });
 
+        // Configure ServiceProviderLeaveDay entity
+        modelBuilder.Entity<ServiceProviderLeaveDay>(entity =>
+        {
+            entity.ToTable("service_provider_leave_days");
+
+            entity.Property(e => e.LeaveDate)
+                .HasColumnName("leave_date")
+                .HasColumnType("date");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at")
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+
+            entity.HasIndex(e => new { e.ServiceProviderId, e.LeaveDate })
+                .IsUnique()
+                .HasDatabaseName("UQ_ServiceProviderLeaveDays_ServiceProviderId_LeaveDate");
+        });
+
+        // Configure BookingAssignment entity
+        modelBuilder.Entity<BookingAssignment>(entity =>
+        {
+            entity.ToTable("booking_assignments");
+            
+            // Configure timestamp columns to ensure UTC
+            entity.Property(e => e.AssignedAt)
+                .HasColumnName("assigned_at")
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+            
+            entity.Property(e => e.UnassignedAt)
+                .HasColumnName("unassigned_at")
+                .HasColumnType("timestamp with time zone");
+            
+            entity.Property(e => e.CreatedAt)
+                .HasColumnName("created_at")
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+            
+            entity.Property(e => e.UpdatedAt)
+                .HasColumnName("updated_at")
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+
+            entity.HasOne(e => e.AssignedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.AssignedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -244,6 +302,22 @@ public class AppDbContext : DbContext
         var utcNow = DateTime.UtcNow;
         foreach (var entry in ChangeTracker.Entries())
         {
+            // Ensure all DateTime properties are UTC
+            foreach (var property in entry.Properties.Where(p => p.Metadata.ClrType == typeof(DateTime) || p.Metadata.ClrType == typeof(DateTime?)))
+            {
+                if (property.CurrentValue != null && property.CurrentValue is DateTime dateTime)
+                {
+                    // Convert to UTC if not already UTC
+                    if (dateTime.Kind != DateTimeKind.Utc)
+                    {
+                        var utcDateTime = dateTime.Kind == DateTimeKind.Local 
+                            ? dateTime.ToUniversalTime() 
+                            : DateTime.SpecifyKind(dateTime, DateTimeKind.Utc);
+                        property.CurrentValue = utcDateTime;
+                    }
+                }
+            }
+
             if (entry.State == EntityState.Added)
             {
                 if (entry.Properties.Any(p => p.Metadata.Name == "CreatedAt"))

@@ -26,7 +26,7 @@ public class BookingStatusHistory
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; 
 
     // Navigation properties
-    public BookingRequest? Booking { get; set; }
+    public BookingRequest? BookingRequest { get; set; }
     public User? ChangedByUser { get; set; }
     public BookingStatus? StatusNavigation { get; set; }
 }
