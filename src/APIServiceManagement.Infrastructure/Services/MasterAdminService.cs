@@ -1865,4 +1865,124 @@ public class MasterAdminService : IMasterAdminService
             return ServiceResult.BadRequest($"Error fetching bookings: {ex.Message}");
         }
     }
+
+    // Discount (all Discount for master admin)
+    public async Task<ServiceResult> GetAllDiscountAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+
+            var response = await _context.DiscountMasters.Select(d => new DiscountRequestDto
+            {
+                DiscountId = d.DiscountId,
+                DiscountType = d.DiscountType,
+                DiscountValue = d.DiscountValue,
+                ValidFrom = d.ValidFrom,
+                ValidTo = d.ValidTo,
+                MinOrderValue = d.MinOrderValue,
+                IsActive = d.IsActive,
+                CreatedAt = d.CreatedAt
+
+            }).ToListAsync();
+
+
+            return ServiceResult.Ok(response);
+        }
+        catch (Exception ex)
+        {
+            return ServiceResult.BadRequest($"Error fetching discount: {ex.Message}");
+        }
+    }
+
+
+
+
+    public async Task<ServiceResult> CreateDiscountAsync(CreateDiscountRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            return ServiceResult.BadRequest("Request is required.");
+        }
+
+        try
+        {
+            var discount = new DiscountMaster
+            {
+                DiscountName = request.DiscountName,
+                DiscountType = request.DiscountType,
+                DiscountValue = request.DiscountValue,
+                ValidFrom = request.ValidFrom,
+                ValidTo = request.ValidTo,
+                MinOrderValue = request.MinOrderValue,
+                IsActive = request.IsActive,
+                CreatedAt = request.CreatedAt
+            };
+            await _context.DiscountMasters.AddAsync(discount);
+            await _context.SaveChangesAsync(cancellationToken);
+            return ServiceResult.Ok(discount);
+        }
+        catch (Exception ex)
+        {
+            return ServiceResult.BadRequest($"Error creating Discount: {ex.Message}");
+        }
+    }
+
+
+
+
+    public async Task<ServiceResult> UpdateDiscountAsync(UpdateDiscountRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            return ServiceResult.BadRequest("Request is required.");
+        }
+
+        try
+        {
+            var discount = await _context.DiscountMasters.FirstOrDefaultAsync(b => b.DiscountId == request.DiscountId, cancellationToken);
+
+            if (discount == null)
+            {
+                return ServiceResult.Ok(new DiscountResponse { Success = false, Message = "Discount not found" });
+            }
+            discount.DiscountName = request.DiscountName;
+            discount.DiscountType = request.DiscountType;
+            discount.DiscountValue = request.DiscountValue;
+            discount.ValidFrom = request.ValidFrom;
+            discount.ValidTo = request.ValidTo;
+            discount.IsActive = request.IsActive;
+            discount.MinOrderValue = request.MinOrderValue;
+            await _context.SaveChangesAsync(cancellationToken);
+            return ServiceResult.Ok(discount);
+        }
+        catch (Exception ex)
+        {
+            return ServiceResult.BadRequest($"Error creating Discount: {ex.Message}");
+        }
+    }
+
+
+
+
+    public async Task<ServiceResult> DeleteDiscountAsync(int discountId, CancellationToken cancellationToken = default)
+    {
+
+        // Check if Discount exist
+        var discount = await _context.DiscountMasters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.DiscountId == discountId, cancellationToken);
+
+        if (discount == null)
+        {
+            return ServiceResult.NotFound("Discount not found.");
+        }
+
+        _context.DiscountMasters.Remove(discount);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult.Ok(new DiscountResponse { Success = true, Message = "Discount deleted successfully." });
+    }
+
+
+
 }

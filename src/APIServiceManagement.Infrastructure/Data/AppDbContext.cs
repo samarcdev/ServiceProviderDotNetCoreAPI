@@ -42,7 +42,7 @@ public class AppDbContext : DbContext
     public DbSet<ServiceProviderLeaveDay> ServiceProviderLeaveDays { get; set; }
     public DbSet<Rating> Ratings { get; set; }
     public DbSet<BookingAssignment> BookingAssignments { get; set; }
-
+    public DbSet<DiscountMaster> DiscountMasters { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

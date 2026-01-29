@@ -313,7 +313,33 @@ public class MasterAdminController : ControllerBase
         var result = await _masterAdminService.GetAllBookingsAsync(statuses, cancellationToken);
         return result.ToActionResult();
     }
+    [HttpGet("discount")]
+    public async Task<IActionResult> GetAllDiscount(CancellationToken cancellationToken)
+    {
+        var result = await _masterAdminService.GetAllDiscountAsync(cancellationToken);
+        return result.ToActionResult();
+    }
 
+    [HttpPost("creatediscount")]
+    public async Task<IActionResult> CreateDiscount(CreateDiscountRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _masterAdminService.CreateDiscountAsync(request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpPut("updatediscount")]
+    public async Task<IActionResult> UpdateDiscount(UpdateDiscountRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _masterAdminService.UpdateDiscountAsync(request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [HttpDelete("deletediscount")]
+    public async Task<IActionResult> DeleteDiscount(int discountId, CancellationToken cancellationToken)
+    {
+        var result = await _masterAdminService.DeleteDiscountAsync(discountId, cancellationToken);
+        return result.ToActionResult();
+    }
     private Guid? GetUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
