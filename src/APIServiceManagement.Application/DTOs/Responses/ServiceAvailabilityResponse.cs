@@ -22,7 +22,6 @@ public class ServiceAvailabilityItem
     public string? CategoryIcon { get; set; }
     public string? CategoryName { get; set; }
     public bool IsAvailable { get; set; }
-    public decimal BasePrice { get; set; }
     public decimal CalculatedPrice { get; set; }
     public decimal PriceRating { get; set; }
 }

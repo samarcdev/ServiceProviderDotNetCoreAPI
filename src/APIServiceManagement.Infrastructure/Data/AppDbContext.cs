@@ -43,6 +43,13 @@ public class AppDbContext : DbContext
     public DbSet<Rating> Ratings { get; set; }
     public DbSet<BookingAssignment> BookingAssignments { get; set; }
     public DbSet<DiscountMaster> DiscountMasters { get; set; }
+    public DbSet<LocationPriceAdjustment> LocationPriceAdjustments { get; set; }
+    public DbSet<TaxMaster> TaxMasters { get; set; }
+    public DbSet<CompanyConfiguration> CompanyConfigurations { get; set; }
+    public DbSet<InvoiceMaster> InvoiceMasters { get; set; }
+    public DbSet<InvoiceTax> InvoiceTaxes { get; set; }
+    public DbSet<InvoiceDiscount> InvoiceDiscounts { get; set; }
+    public DbSet<InvoiceAddOn> InvoiceAddOns { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -293,6 +300,73 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.AssignedByUserId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure InvoiceMaster entity relationships
+        modelBuilder.Entity<InvoiceMaster>(entity =>
+        {
+            entity.HasOne(e => e.Booking)
+                .WithMany()
+                .HasForeignKey(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Customer)
+                .WithMany()
+                .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(e => e.ServiceProviderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.Service)
+                .WithMany()
+                .HasForeignKey(e => e.ServiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.InvoiceNumber)
+                .IsUnique();
+
+            entity.HasIndex(e => e.BookingId)
+                .IsUnique();
+        });
+
+        // Configure InvoiceTax entity relationships
+        modelBuilder.Entity<InvoiceTax>(entity =>
+        {
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.InvoiceTaxes)
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tax)
+                .WithMany()
+                .HasForeignKey(e => e.TaxId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configure InvoiceDiscount entity relationships
+        modelBuilder.Entity<InvoiceDiscount>(entity =>
+        {
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.InvoiceDiscounts)
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Discount)
+                .WithMany()
+                .HasForeignKey(e => e.DiscountId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure InvoiceAddOn entity relationships
+        modelBuilder.Entity<InvoiceAddOn>(entity =>
+        {
+            entity.HasOne(e => e.Invoice)
+                .WithMany(i => i.InvoiceAddOns)
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
     }

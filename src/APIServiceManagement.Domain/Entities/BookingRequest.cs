@@ -55,6 +55,26 @@ public class BookingRequest
     public decimal? EstimatedPrice { get; set; }
     [Column("final_price")]
     public decimal? FinalPrice { get; set; }
+    [Column("base_price")]
+    public decimal? BasePrice { get; set; }
+    [Column("location_adjustment_amount")]
+    public decimal? LocationAdjustmentAmount { get; set; }
+    [Column("discount_id")]
+    public int? DiscountId { get; set; }
+    [Column("discount_amount")]
+    public decimal? DiscountAmount { get; set; }
+    [Column("cgst_amount")]
+    public decimal? CgstAmount { get; set; }
+    [Column("sgst_amount")]
+    public decimal? SgstAmount { get; set; }
+    [Column("igst_amount")]
+    public decimal? IgstAmount { get; set; }
+    [Column("service_charge_amount")]
+    public decimal? ServiceChargeAmount { get; set; }
+    [Column("platform_charge_amount")]
+    public decimal? PlatformChargeAmount { get; set; }
+    [Column("total_tax_amount")]
+    public decimal? TotalTaxAmount { get; set; }
     [Column("admin_notes")]
     public string AdminNotes { get; set; } = string.Empty;
     [Column("service_provider_notes")]
@@ -83,4 +103,5 @@ public class BookingRequest
     public User Admin { get; set; }
     public BookingStatus? StatusNavigation { get; set; }
     public ICollection<BookingStatusHistory> BookingStatusHistories { get; set; }
+    public DiscountMaster? Discount { get; set; }
 }

@@ -53,6 +53,44 @@ public class LocalFileStorageService : IFileStorageService
         };
     }
 
+    public async Task<string> SaveFileAsync(byte[] fileBytes, string fileName, string subfolder, CancellationToken cancellationToken = default)
+    {
+        if (fileBytes == null || fileBytes.Length == 0)
+        {
+            throw new InvalidOperationException("File bytes are empty.");
+        }
+
+        var safeFileName = Path.GetFileName(fileName);
+        var extension = Path.GetExtension(safeFileName);
+        var storedFileName = $"{Guid.NewGuid():N}{extension}";
+        var targetFolder = Path.Combine(_rootPath, subfolder);
+
+        Directory.CreateDirectory(targetFolder);
+
+        var fullPath = Path.Combine(targetFolder, storedFileName);
+        await File.WriteAllBytesAsync(fullPath, fileBytes, cancellationToken);
+
+        var relativePath = Path.Combine(subfolder, storedFileName).Replace("\\", "/");
+        return relativePath;
+    }
+
+    public Task<byte[]> GetFileAsync(string relativePath, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new ArgumentException("Relative path cannot be empty.", nameof(relativePath));
+        }
+
+        var fullPath = Path.Combine(_rootPath, relativePath.Replace("/", "\\"));
+        
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("File not found.", fullPath);
+        }
+
+        return File.ReadAllBytesAsync(fullPath, cancellationToken);
+    }
+
     public Task<bool> DeleteAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(relativePath))

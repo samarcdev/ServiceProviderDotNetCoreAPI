@@ -73,7 +73,6 @@ public class BookingService : IBookingService
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
                 IsAvailable = true,
-                BasePrice = 0,
                 CalculatedPrice = 0,
                 PriceRating = 1
             }).ToList()
@@ -148,7 +147,6 @@ public class BookingService : IBookingService
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
                 IsAvailable = true,
-                BasePrice = 0,
                 CalculatedPrice = 0,
                 PriceRating = 1 // Default price rating
             }).ToList(),
@@ -235,7 +233,6 @@ public class BookingService : IBookingService
             return ServiceResult.Ok(new ServicePriceCalculationResponse
             {
                 ServiceId = serviceId,
-                BasePrice = 0,
                 PriceRating = priceRating,
                 CalculatedPrice = 0
             });
@@ -246,7 +243,6 @@ public class BookingService : IBookingService
         return ServiceResult.Ok(new ServicePriceCalculationResponse
         {
             ServiceId = serviceId,
-            BasePrice = basePrice.Value,
             PriceRating = priceRating,
             CalculatedPrice = calculatedPrice
         });
@@ -271,6 +267,7 @@ public class BookingService : IBookingService
         var normalizedPincode = request.Pincode.Trim();
         var pincodeEntry = await _context.CityPincodes
             .AsNoTracking()
+            .Include(cp => cp.City)
             .FirstOrDefaultAsync(cp => cp.IsActive && cp.Pincode == normalizedPincode, cancellationToken);
 
         if (pincodeEntry == null)
@@ -300,15 +297,209 @@ public class BookingService : IBookingService
             });
         }
 
-        var basePrice = await _context.ServicePrices
-            .AsNoTracking()
-            .Where(price => price.IsActive && price.ServiceId == request.ServiceId)
-            .OrderByDescending(price => price.EffectiveFrom)
-            .Select(price => (decimal?)price.Charges)
-            .FirstOrDefaultAsync(cancellationToken);
+        // Validate discount if provided
+        if (request.DiscountId.HasValue)
+        {
+            var discount = await _context.DiscountMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => 
+                    d.DiscountId == request.DiscountId.Value 
+                    && d.IsActive
+                    && d.ValidFrom <= DateTime.UtcNow
+                    && d.ValidTo >= DateTime.UtcNow,
+                    cancellationToken);
 
-        var priceRating = 1; // Default price rating
-        var estimatedPrice = basePrice.HasValue ? basePrice.Value * priceRating : (decimal?)null;
+            if (discount == null)
+            {
+                return ServiceResult.BadRequest(new BookingResponse
+                {
+                    Success = false,
+                    Message = "Invalid or expired discount code."
+                });
+            }
+
+            // Validate minimum order value if calculated price is provided
+            if (request.CalculatedPrice.HasValue && request.CalculatedPrice.Value < discount.MinOrderValue)
+            {
+                return ServiceResult.BadRequest(new BookingResponse
+                {
+                    Success = false,
+                    Message = $"Discount requires a minimum order value of {discount.MinOrderValue}."
+                });
+            }
+        }
+
+        // Use prices from request (calculated in summary), or calculate if not provided
+        decimal? basePriceValue = request.BasePrice;
+        decimal? locationAdjustmentAmount = request.LocationAdjustmentAmount;
+        decimal? calculatedPrice = request.CalculatedPrice;
+        decimal? priceAfterDiscount = request.PriceAfterDiscount;
+        decimal? cgstAmount = request.CgstAmount;
+        decimal? sgstAmount = request.SgstAmount;
+        decimal? igstAmount = request.IgstAmount;
+        decimal? totalTaxAmount = request.TotalTaxAmount;
+        decimal? serviceChargeAmount = request.ServiceChargeAmount;
+        decimal? platformChargeAmount = request.PlatformChargeAmount;
+        decimal? finalPrice = request.FinalPrice;
+
+        // If prices are not provided in request, calculate them (backward compatibility)
+        if (!basePriceValue.HasValue || !calculatedPrice.HasValue)
+        {
+            var basePrice = await _context.ServicePrices
+                .AsNoTracking()
+                .Where(price => price.IsActive && price.ServiceId == request.ServiceId)
+                .OrderByDescending(price => price.EffectiveFrom)
+                .Select(price => (decimal?)price.Charges)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            basePriceValue = basePrice.HasValue ? basePrice.Value : 0m;
+            
+            // Get location price adjustment
+            var locationPriceAdjustment = await _context.LocationPriceAdjustments
+                .AsNoTracking()
+                .FirstOrDefaultAsync(lpa => lpa.IsActive && lpa.CityPincodeId == pincodeEntry.Id, cancellationToken);
+
+            calculatedPrice = basePriceValue.Value;
+            locationAdjustmentAmount = 0m;
+            
+            if (locationPriceAdjustment != null)
+            {
+                if (locationPriceAdjustment.PriceMultiplier.HasValue)
+                {
+                    calculatedPrice = basePriceValue.Value * locationPriceAdjustment.PriceMultiplier.Value;
+                    locationAdjustmentAmount = calculatedPrice.Value - basePriceValue.Value;
+                }
+                else if (locationPriceAdjustment.FixedAdjustment.HasValue)
+                {
+                    locationAdjustmentAmount = locationPriceAdjustment.FixedAdjustment.Value;
+                    calculatedPrice = basePriceValue.Value + locationAdjustmentAmount.Value;
+                }
+            }
+
+            // Apply discount if provided
+            if (request.DiscountId.HasValue && calculatedPrice.HasValue)
+            {
+                var discount = await _context.DiscountMasters
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.DiscountId == request.DiscountId.Value, cancellationToken);
+
+                if (discount != null && discount.DiscountValue.HasValue)
+                {
+                    decimal discountAmount = 0m;
+                    if (discount.DiscountType?.ToLowerInvariant() == "percentage")
+                    {
+                        discountAmount = calculatedPrice.Value * (discount.DiscountValue.Value / 100m);
+                    }
+                    else
+                    {
+                        discountAmount = discount.DiscountValue.Value;
+                    }
+                    
+                    finalPrice = calculatedPrice.Value - discountAmount;
+                    if (finalPrice < 0) finalPrice = 0;
+                }
+                else
+                {
+                    finalPrice = calculatedPrice;
+                }
+            }
+            else
+            {
+                priceAfterDiscount = calculatedPrice;
+                finalPrice = calculatedPrice;
+            }
+        }
+
+        // Calculate taxes and service charges if not provided in request
+        if (!cgstAmount.HasValue || !serviceChargeAmount.HasValue || !finalPrice.HasValue)
+        {
+            // Get company configuration for customer state comparison
+            var companyConfig = await _context.CompanyConfigurations
+                .AsNoTracking()
+                .Include(cc => cc.CompanyState)
+                .FirstOrDefaultAsync(cc => cc.IsActive, cancellationToken);
+            
+            // Get customer state from pincode
+            var customerStateId = pincodeEntry.City?.StateId;
+            var companyStateId = companyConfig?.CompanyStateId;
+            bool isSameState = customerStateId.HasValue && companyStateId.HasValue && customerStateId.Value == companyStateId.Value;
+
+            // Get all active tax rates from tax_master
+            var cgstTax = await _context.TaxMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "CGST", cancellationToken);
+            var sgstTax = await _context.TaxMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "SGST", cancellationToken);
+            var igstTax = await _context.TaxMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "IGST", cancellationToken);
+            var serviceChargeTax = await _context.TaxMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "SERVICE CHARGE", cancellationToken);
+            var platformChargeTax = await _context.TaxMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "PLATFORM CHARGE", cancellationToken);
+
+            // Calculate taxes based on price after discount
+            decimal calculatedCgstAmount = 0m;
+            decimal calculatedSgstAmount = 0m;
+            decimal calculatedIgstAmount = 0m;
+
+            if (isSameState)
+            {
+                // Same state: CGST + SGST (9% + 9% = 18%)
+                if (cgstTax != null && priceAfterDiscount.HasValue)
+                {
+                    calculatedCgstAmount = priceAfterDiscount.Value * (cgstTax.TaxPercentage / 100m);
+                }
+                if (sgstTax != null && priceAfterDiscount.HasValue)
+                {
+                    calculatedSgstAmount = priceAfterDiscount.Value * (sgstTax.TaxPercentage / 100m);
+                }
+            }
+            else
+            {
+                // Different state: IGST (18%)
+                if (igstTax != null && priceAfterDiscount.HasValue)
+                {
+                    calculatedIgstAmount = priceAfterDiscount.Value * (igstTax.TaxPercentage / 100m);
+                }
+            }
+
+            cgstAmount = calculatedCgstAmount;
+            sgstAmount = calculatedSgstAmount;
+            igstAmount = calculatedIgstAmount;
+            totalTaxAmount = calculatedCgstAmount + calculatedSgstAmount + calculatedIgstAmount;
+
+            // Calculate service charge from tax_master (only if active)
+            decimal calculatedServiceChargeAmount = 0m;
+            if (serviceChargeTax != null && priceAfterDiscount.HasValue)
+            {
+                calculatedServiceChargeAmount = priceAfterDiscount.Value * (serviceChargeTax.TaxPercentage / 100m);
+            }
+            if (!serviceChargeAmount.HasValue)
+            {
+                serviceChargeAmount = calculatedServiceChargeAmount;
+            }
+
+            // Calculate platform charge from tax_master (only if active)
+            decimal calculatedPlatformChargeAmount = 0m;
+            if (platformChargeTax != null && priceAfterDiscount.HasValue)
+            {
+                calculatedPlatformChargeAmount = priceAfterDiscount.Value * (platformChargeTax.TaxPercentage / 100m);
+            }
+            if (!platformChargeAmount.HasValue)
+            {
+                platformChargeAmount = calculatedPlatformChargeAmount;
+            }
+
+            // Recalculate final price: price after discount + taxes + service charge + platform charge
+            if (priceAfterDiscount.HasValue)
+            {
+                finalPrice = priceAfterDiscount.Value + totalTaxAmount.Value + serviceChargeAmount.Value + platformChargeAmount.Value;
+            }
+        }
 
         // Build address from separate fields
         var addressParts = new List<string>();
@@ -366,6 +557,26 @@ public class BookingService : IBookingService
             });
         }
 
+        // Find admin assigned to the state based on pincode location
+        Guid? assignedAdminId = null;
+        
+        // Get the state ID from the pincode's city
+        if (pincodeEntry?.City?.StateId.HasValue == true)
+        {
+            // Find admin assigned to this state
+            assignedAdminId = await _context.AdminStateAssignments
+                .AsNoTracking()
+                .Where(asa => asa.StateId == pincodeEntry.City.StateId.Value)
+                .Select(asa => (Guid?)asa.AdminUserId)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        // If no admin found for the location, assign to default admin
+        if (!assignedAdminId.HasValue)
+        {
+            assignedAdminId = await GetDefaultAdminIdAsync(cancellationToken);
+        }
+
         var booking = new BookingRequest
         {
             CustomerId = userId.Value,
@@ -385,8 +596,20 @@ public class BookingService : IBookingService
             CustomerName = customerName,
             PreferredDate = preferredDateUtc,
             TimeSlot = request.TimeSlot,
-            EstimatedPrice = estimatedPrice,
+            BasePrice = basePriceValue,
+            LocationAdjustmentAmount = locationAdjustmentAmount,
+            EstimatedPrice = calculatedPrice,
+            DiscountId = request.DiscountId,
+            DiscountAmount = request.DiscountAmount,
+            CgstAmount = cgstAmount,
+            SgstAmount = sgstAmount,
+            IgstAmount = igstAmount,
+            TotalTaxAmount = totalTaxAmount,
+            ServiceChargeAmount = serviceChargeAmount,
+            PlatformChargeAmount = platformChargeAmount,
+            FinalPrice = finalPrice,
             WorkingHours = request.WorkingHours ?? 1,
+            AdminId = assignedAdminId,
             // Set default values for NOT NULL string columns
             AdminNotes = string.Empty,
             ServiceProviderNotes = string.Empty,
@@ -721,9 +944,15 @@ public class BookingService : IBookingService
         }
 
         booking.ServiceProviderNotes = request.ServiceProviderNotes ?? booking.ServiceProviderNotes;
-        booking.FinalPrice = request.FinalPrice ?? booking.FinalPrice;
         booking.CustomerRating = request.CustomerRating ?? booking.CustomerRating;
         booking.CustomerFeedback = request.CustomerFeedback ?? booking.CustomerFeedback;
+        
+        // Only set final price if explicitly provided (for backward compatibility)
+        // Otherwise, it will be calculated automatically when completing the service
+        if (request.FinalPrice.HasValue)
+        {
+            booking.FinalPrice = request.FinalPrice.Value;
+        }
         // Convert PreferredDate to UTC if provided
         if (request.PreferredDate.HasValue)
         {
@@ -768,6 +997,111 @@ public class BookingService : IBookingService
                 if (!booking.CompletedAt.HasValue)
                 {
                     booking.CompletedAt = DateTime.UtcNow;
+                }
+
+                // Automatically calculate final price if not already set
+                if (!booking.FinalPrice.HasValue && booking.EstimatedPrice.HasValue)
+                {
+                    // Calculate price after discount
+                    decimal priceAfterDiscount = booking.EstimatedPrice.Value;
+                    if (booking.DiscountAmount.HasValue && booking.DiscountAmount.Value > 0)
+                    {
+                        priceAfterDiscount = booking.EstimatedPrice.Value - booking.DiscountAmount.Value;
+                        if (priceAfterDiscount < 0) priceAfterDiscount = 0;
+                    }
+
+                    // Use existing tax amounts if available, otherwise calculate them
+                    decimal totalTaxAmount = booking.TotalTaxAmount ?? 0m;
+                    decimal serviceChargeAmount = booking.ServiceChargeAmount ?? 0m;
+                    decimal platformChargeAmount = booking.PlatformChargeAmount ?? 0m;
+
+                    // If tax amounts are not stored, calculate them based on price after discount
+                    if (totalTaxAmount == 0 && serviceChargeAmount == 0 && platformChargeAmount == 0)
+                    {
+                        // Get company configuration for customer state comparison
+                        var companyConfig = await _context.CompanyConfigurations
+                            .AsNoTracking()
+                            .Include(cc => cc.CompanyState)
+                            .FirstOrDefaultAsync(cc => cc.IsActive, cancellationToken);
+
+                        // Get customer state from pincode
+                        var pincodeEntry = await _context.CityPincodes
+                            .AsNoTracking()
+                            .Include(p => p.City)
+                            .ThenInclude(c => c.State)
+                            .FirstOrDefaultAsync(p => p.Pincode == booking.Pincode, cancellationToken);
+
+                        var customerStateId = pincodeEntry?.City?.StateId;
+                        var companyStateId = companyConfig?.CompanyStateId;
+                        bool isSameState = customerStateId.HasValue && companyStateId.HasValue && customerStateId.Value == companyStateId.Value;
+
+                        // Get all active tax rates from tax_master
+                        var cgstTax = await _context.TaxMasters
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "CGST", cancellationToken);
+                        var sgstTax = await _context.TaxMasters
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "SGST", cancellationToken);
+                        var igstTax = await _context.TaxMasters
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "IGST", cancellationToken);
+                        var serviceChargeTax = await _context.TaxMasters
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "SERVICE CHARGE", cancellationToken);
+                        var platformChargeTax = await _context.TaxMasters
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "PLATFORM CHARGE", cancellationToken);
+
+                        // Calculate taxes
+                        decimal cgstAmount = 0m;
+                        decimal sgstAmount = 0m;
+                        decimal igstAmount = 0m;
+
+                        if (isSameState)
+                        {
+                            // Same state: CGST + SGST
+                            if (cgstTax != null)
+                            {
+                                cgstAmount = priceAfterDiscount * (cgstTax.TaxPercentage / 100m);
+                                booking.CgstAmount = cgstAmount;
+                            }
+                            if (sgstTax != null)
+                            {
+                                sgstAmount = priceAfterDiscount * (sgstTax.TaxPercentage / 100m);
+                                booking.SgstAmount = sgstAmount;
+                            }
+                            totalTaxAmount = cgstAmount + sgstAmount;
+                        }
+                        else
+                        {
+                            // Different state: IGST
+                            if (igstTax != null)
+                            {
+                                igstAmount = priceAfterDiscount * (igstTax.TaxPercentage / 100m);
+                                booking.IgstAmount = igstAmount;
+                            }
+                            totalTaxAmount = igstAmount;
+                        }
+
+                        // Calculate service charge
+                        if (serviceChargeTax != null)
+                        {
+                            serviceChargeAmount = priceAfterDiscount * (serviceChargeTax.TaxPercentage / 100m);
+                            booking.ServiceChargeAmount = serviceChargeAmount;
+                        }
+
+                        // Calculate platform charge
+                        if (platformChargeTax != null)
+                        {
+                            platformChargeAmount = priceAfterDiscount * (platformChargeTax.TaxPercentage / 100m);
+                            booking.PlatformChargeAmount = platformChargeAmount;
+                        }
+
+                        booking.TotalTaxAmount = totalTaxAmount;
+                    }
+
+                    // Calculate final price: price after discount + taxes + service charge + platform charge
+                    booking.FinalPrice = priceAfterDiscount + totalTaxAmount + serviceChargeAmount + platformChargeAmount;
                 }
 
                 var currentAssignment = await _context.BookingAssignments
@@ -1413,6 +1747,7 @@ public class BookingService : IBookingService
         string pincode,
         DateTime? preferredDate,
         string? timeSlot,
+        string? discountCode = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pincode))
@@ -1423,6 +1758,7 @@ public class BookingService : IBookingService
         var normalizedPincode = pincode.Trim();
         var pincodeEntry = await _context.CityPincodes
             .AsNoTracking()
+            .Include(cp => cp.City)
             .FirstOrDefaultAsync(cp => cp.IsActive && cp.Pincode == normalizedPincode, cancellationToken);
 
         if (pincodeEntry == null)
@@ -1452,8 +1788,167 @@ public class BookingService : IBookingService
             .Select(price => (decimal?)price.Charges)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var priceRating = 1; // Default price rating
-        var calculatedPrice = basePrice.HasValue ? basePrice.Value * priceRating : 0;
+        // Get location price adjustment for this pincode
+        var locationPriceAdjustment = await _context.LocationPriceAdjustments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(lpa => lpa.IsActive && lpa.CityPincodeId == pincodeEntry.Id, cancellationToken);
+
+        // Calculate price based on base price and location adjustment
+        var basePriceValue = basePrice.HasValue ? basePrice.Value : 0m;
+        var locationAdjustmentAmount = 0m;
+        var calculatedPrice = basePriceValue;
+        
+        if (locationPriceAdjustment != null)
+        {
+            if (locationPriceAdjustment.PriceMultiplier.HasValue)
+            {
+                // If price multiplier exists, multiply the base price
+                calculatedPrice = basePriceValue * locationPriceAdjustment.PriceMultiplier.Value;
+                locationAdjustmentAmount = calculatedPrice - basePriceValue;
+            }
+            else if (locationPriceAdjustment.FixedAdjustment.HasValue)
+            {
+                // If price multiplier is null, add fixed adjustment
+                locationAdjustmentAmount = locationPriceAdjustment.FixedAdjustment.Value;
+                calculatedPrice = basePriceValue + locationAdjustmentAmount;
+            }
+        }
+
+        // Apply discount if discount code is provided
+        int? discountId = null;
+        string? discountName = null;
+        decimal discountAmount = 0m;
+        decimal priceAfterDiscount = calculatedPrice;
+
+        if (!string.IsNullOrWhiteSpace(discountCode))
+        {
+            var normalizedDiscountCode = discountCode.Trim().ToUpper();
+            var discount = await _context.DiscountMasters
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => 
+                    d.IsActive 
+                    && d.DiscountName != null 
+                    && d.DiscountName.ToUpper() == normalizedDiscountCode
+                    && d.ValidFrom <= DateTime.UtcNow
+                    && d.ValidTo >= DateTime.UtcNow,
+                    cancellationToken);
+
+            if (discount != null)
+            {
+                // Check minimum order value
+                if (calculatedPrice >= discount.MinOrderValue)
+                {
+                    discountId = discount.DiscountId;
+                    discountName = discount.DiscountName;
+                    
+                    // Calculate discount amount based on discount type
+                    if (discount.DiscountValue.HasValue)
+                    {
+                        if (discount.DiscountType?.ToLowerInvariant() == "percentage")
+                        {
+                            // Percentage discount
+                            discountAmount = calculatedPrice * (discount.DiscountValue.Value / 100m);
+                        }
+                        else
+                        {
+                            // Fixed amount discount
+                            discountAmount = discount.DiscountValue.Value;
+                        }
+                        
+                        priceAfterDiscount = calculatedPrice - discountAmount;
+                        
+                        // Ensure price after discount doesn't go below zero
+                        if (priceAfterDiscount < 0)
+                        {
+                            priceAfterDiscount = 0;
+                            discountAmount = calculatedPrice;
+                        }
+                    }
+                }
+                else
+                {
+                    return ServiceResult.BadRequest($"Discount code '{discountCode}' requires a minimum order value of {discount.MinOrderValue}.");
+                }
+            }
+            else
+            {
+                return ServiceResult.BadRequest($"Invalid or expired discount code '{discountCode}'.");
+            }
+        }
+
+        // Get company configuration for customer state comparison
+        var companyConfig = await _context.CompanyConfigurations
+            .AsNoTracking()
+            .Include(cc => cc.CompanyState)
+            .FirstOrDefaultAsync(cc => cc.IsActive, cancellationToken);
+        
+        // Get customer state from pincode
+        var customerStateId = pincodeEntry.City?.StateId;
+        var companyStateId = companyConfig?.CompanyStateId;
+        bool isSameState = customerStateId.HasValue && companyStateId.HasValue && customerStateId.Value == companyStateId.Value;
+
+        // Get all active tax rates from tax_master
+        var cgstTax = await _context.TaxMasters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "CGST", cancellationToken);
+        var sgstTax = await _context.TaxMasters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "SGST", cancellationToken);
+        var igstTax = await _context.TaxMasters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "IGST", cancellationToken);
+        var serviceChargeTax = await _context.TaxMasters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "SERVICE CHARGE", cancellationToken);
+        var platformChargeTax = await _context.TaxMasters
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.IsActive && t.TaxName.ToUpper() == "PLATFORM CHARGE", cancellationToken);
+
+        // Calculate taxes
+        decimal cgstAmount = 0m;
+        decimal sgstAmount = 0m;
+        decimal igstAmount = 0m;
+        decimal totalTaxAmount = 0m;
+
+        if (isSameState)
+        {
+            // Same state: CGST + SGST (9% + 9% = 18%)
+            if (cgstTax != null)
+            {
+                cgstAmount = priceAfterDiscount * (cgstTax.TaxPercentage / 100m);
+            }
+            if (sgstTax != null)
+            {
+                sgstAmount = priceAfterDiscount * (sgstTax.TaxPercentage / 100m);
+            }
+            totalTaxAmount = cgstAmount + sgstAmount;
+        }
+        else
+        {
+            // Different state: IGST (18%)
+            if (igstTax != null)
+            {
+                igstAmount = priceAfterDiscount * (igstTax.TaxPercentage / 100m);
+            }
+            totalTaxAmount = igstAmount;
+        }
+
+        // Calculate service charge from tax_master (only if active)
+        decimal serviceChargeAmount = 0m;
+        if (serviceChargeTax != null)
+        {
+            serviceChargeAmount = priceAfterDiscount * (serviceChargeTax.TaxPercentage / 100m);
+        }
+
+        // Calculate platform charge from tax_master (only if active)
+        decimal platformChargeAmount = 0m;
+        if (platformChargeTax != null)
+        {
+            platformChargeAmount = priceAfterDiscount * (platformChargeTax.TaxPercentage / 100m);
+        }
+
+        // Calculate final price: price after discount + taxes + service charge + platform charge
+        decimal finalPrice = priceAfterDiscount + totalTaxAmount + serviceChargeAmount + platformChargeAmount;
 
         var response = new BookingSummaryResponse
         {
@@ -1465,8 +1960,21 @@ public class BookingService : IBookingService
             Pincode = normalizedPincode,
             PreferredDate = preferredDate,
             TimeSlot = timeSlot,
-            BasePrice = basePrice ?? 0,
-            CalculatedPrice = calculatedPrice
+            BasePrice = basePriceValue,
+            LocationAdjustmentAmount = locationAdjustmentAmount,
+            CalculatedPrice = calculatedPrice,
+            DiscountId = discountId,
+            DiscountName = discountName,
+            DiscountAmount = discountAmount,
+            PriceAfterDiscount = priceAfterDiscount,
+            CgstAmount = cgstAmount,
+            SgstAmount = sgstAmount,
+            IgstAmount = igstAmount,
+            TotalTaxAmount = totalTaxAmount,
+            ServiceChargeAmount = serviceChargeAmount,
+            PlatformChargeAmount = platformChargeAmount,
+            FinalPrice = finalPrice,
+            IsSameState = isSameState
         };
 
         return ServiceResult.Ok(response);
@@ -1588,23 +2096,67 @@ public class BookingService : IBookingService
             .Where(s => s.IsActive && serviceIdsInPincode.Contains(s.Id))
             .ToListAsync(cancellationToken);
 
+        // Get location price adjustment for this pincode
+        var locationPriceAdjustment = await _context.LocationPriceAdjustments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(lpa => lpa.IsActive && lpa.CityPincodeId == pincodeEntry.Id, cancellationToken);
+
+        // Get base prices for all services (most recent effective price for each service)
+        var serviceIds = services.Select(s => s.Id).ToList();
+        var allServicePrices = await _context.ServicePrices
+            .AsNoTracking()
+            .Where(sp => sp.IsActive && sp.ServiceId.HasValue && serviceIds.Contains(sp.ServiceId.Value))
+            .ToListAsync(cancellationToken);
+        
+        // Group by service ID and get the most recent price for each service
+        var servicePricesDict = allServicePrices
+            .GroupBy(sp => sp.ServiceId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(sp => sp.EffectiveFrom).First().Charges
+            );
+
         response.Success = true;
         response.Pincode = pincode;
-        response.Services = services.Select(service => new ServiceAvailabilityItem
+        response.Services = services.Select(service =>
         {
-            ServiceId = service.Id.ToString(),
-            ServiceName = service.ServiceName,
-            Description = service.Description,
-            CategoryId = service.CategoryId ?? 0,
-            Image = service.Image,
-            Icon = service.Icon,
-            CategoryImage = service.Category?.Image,
-            CategoryIcon = service.Category?.Icon,
-            CategoryName = service.Category?.CategoryName ?? "Uncategorized",
-            IsAvailable = true,
-            BasePrice = 0,
-            CalculatedPrice = 0,
-            PriceRating = 1
+            // Get base price for this service
+            var basePrice = servicePricesDict.TryGetValue(service.Id, out var price) ? price : 0m;
+            var calculatedPrice = basePrice;
+            var priceRating = 1m;
+
+            // Apply location-based price adjustment
+            if (locationPriceAdjustment != null)
+            {
+                if (locationPriceAdjustment.PriceMultiplier.HasValue)
+                {
+                    // If price multiplier exists, multiply the base price
+                    calculatedPrice = basePrice * locationPriceAdjustment.PriceMultiplier.Value;
+                    priceRating = locationPriceAdjustment.PriceMultiplier.Value;
+                }
+                else if (locationPriceAdjustment.FixedAdjustment.HasValue)
+                {
+                    // If price multiplier is null, add fixed adjustment
+                    calculatedPrice = basePrice + locationPriceAdjustment.FixedAdjustment.Value;
+                    priceRating = 1m; // Keep rating as 1 when using fixed adjustment
+                }
+            }
+
+            return new ServiceAvailabilityItem
+            {
+                ServiceId = service.Id.ToString(),
+                ServiceName = service.ServiceName,
+                Description = service.Description,
+                CategoryId = service.CategoryId ?? 0,
+                Image = service.Image,
+                Icon = service.Icon,
+                CategoryImage = service.Category?.Image,
+                CategoryIcon = service.Category?.Icon,
+                CategoryName = service.Category?.CategoryName ?? "Uncategorized",
+                IsAvailable = true,
+                CalculatedPrice = calculatedPrice,
+                PriceRating = priceRating
+            };
         }).ToList();
 
         return response;
@@ -2101,5 +2653,32 @@ public class BookingService : IBookingService
                 }
             };
         }
+    }
+
+    /// <summary>
+    /// Gets the default admin ID. Returns null if no default admin exists.
+    /// </summary>
+    private async Task<Guid?> GetDefaultAdminIdAsync(CancellationToken cancellationToken)
+    {
+        // Query for default admin: must be active user with active DefaultAdmin role
+        // This should always return an admin if one exists in the system
+        // If this returns null, it means no default admin exists or no default admin meets the criteria
+        var defaultAdmin = await _context.Users
+            .AsNoTracking()
+            .Join(_context.Roles.AsNoTracking(),
+                user => user.RoleId,
+                role => role.Id,
+                (user, role) => new { user, role })
+            .Where(entry =>
+                entry.user.StatusId == (int)UserStatusEnum.Active &&
+                entry.role.IsActive &&
+                entry.role.Id == (int)RoleEnum.DefaultAdmin)
+            .OrderBy(entry => entry.user.CreatedAt)
+            .Select(entry => (Guid?)entry.user.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // If no default admin found, this will return null
+        // The system should have at least one default admin configured
+        return defaultAdmin;
     }
 }
