@@ -85,6 +85,7 @@ public class BookingsController : ControllerBase
         [FromQuery] string pincode,
         [FromQuery] DateTime? preferredDate,
         [FromQuery] string? timeSlot,
+        [FromQuery] string? discountCode,
         CancellationToken cancellationToken)
     {
         var result = await _bookingService.GetBookingSummaryAsync(
@@ -94,6 +95,7 @@ public class BookingsController : ControllerBase
             pincode,
             preferredDate,
             timeSlot,
+            discountCode,
             cancellationToken);
         return result.ToActionResult();
     }
