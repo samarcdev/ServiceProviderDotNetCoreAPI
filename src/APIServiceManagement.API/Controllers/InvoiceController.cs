@@ -108,4 +108,19 @@ public class InvoiceController : ControllerBase
 
         return File(pdfResponse.PdfBytes, pdfResponse.ContentType, pdfResponse.FileName);
     }
+
+    /// <summary>
+    /// List invoices with pagination and optional payment status filter
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "Admin,MasterAdmin,DefaultAdmin")]
+    public async Task<IActionResult> ListInvoices(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? paymentStatus = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _invoiceService.ListInvoicesAsync(pageNumber, pageSize, paymentStatus, cancellationToken);
+        return result.ToActionResult();
+    }
 }

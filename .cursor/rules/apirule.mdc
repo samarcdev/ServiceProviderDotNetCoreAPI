@@ -1,0 +1,266 @@
+---
+name: apirule
+description: Comprehensive rules for .NET API development, build validation, and production readiness
+---
+
+# API Development Rules (.NET 8.0)
+
+## ⚠️ CRITICAL: Change Impact Analysis and Confirmation Requirements
+
+### MANDATORY Pre-Change Impact Analysis
+
+**BEFORE making ANY changes that modify, remove, or refactor existing code, database schema, or configuration, you MUST:**
+
+1. **Identify Breaking Changes**
+   - **ALWAYS** search the codebase to find ALL usages of the code/feature you're changing
+   - **ALWAYS** identify ALL files, controllers, services, repositories, and DTOs that depend on what you're modifying
+   - **ALWAYS** check for database migrations, stored procedures, views, or functions that reference the changed entities/columns
+   - **ALWAYS** identify API endpoints that will be affected
+   - **ALWAYS** check for frontend/UI code that depends on the API changes
+
+2. **Document Impact Analysis**
+   - **ALWAYS** create a detailed impact report showing:
+     - Files that will be affected (with line numbers)
+     - API endpoints that will break or change behavior
+     - Database tables/columns/relationships that will be impacted
+     - Frontend components/pages that depend on the changes
+     - Any business logic that will be affected
+     - Migration requirements and data migration needs
+   - **ALWAYS** show the user EXACTLY what will break before proceeding
+
+3. **Get Explicit Confirmation**
+   - **NEVER** proceed with breaking changes without explicit user confirmation
+   - **ALWAYS** present the impact analysis clearly to the user
+   - **ALWAYS** wait for user approval before:
+     - Removing any code, methods, properties, or classes
+     - Modifying database schema (tables, columns, constraints, indexes)
+     - Changing API endpoint signatures or return types
+     - Refactoring shared code that other parts depend on
+     - Removing or modifying configuration settings
+     - Changing authentication/authorization logic
+   - **ALWAYS** ask: "This change will break [X, Y, Z]. Do you want me to proceed?"
+
+4. **Database Change Requirements**
+   - **ALWAYS** identify ALL tables, columns, indexes, foreign keys, and constraints that will be affected
+   - **ALWAYS** check for existing data that might be lost or need migration
+   - **ALWAYS** identify stored procedures, views, triggers, and functions that reference changed objects
+   - **ALWAYS** show migration scripts and data migration requirements before applying
+   - **ALWAYS** warn about potential data loss or corruption risks
+   - **NEVER** drop columns, tables, or constraints without explicit confirmation
+
+5. **Code Removal Requirements**
+   - **ALWAYS** search for ALL references to the code being removed using grep/codebase_search
+   - **ALWAYS** show ALL files that import, inherit from, or use the code being removed
+   - **ALWAYS** identify if removing code will cause compilation errors
+   - **ALWAYS** check for tests that depend on the code being removed
+   - **NEVER** remove code without showing complete dependency analysis
+
+6. **API Endpoint Change Requirements**
+   - **ALWAYS** identify ALL frontend/UI code that calls the endpoint
+   - **ALWAYS** check for mobile apps, third-party integrations, or webhooks that use the endpoint
+   - **ALWAYS** show request/response DTO changes and their impact
+   - **ALWAYS** identify versioning requirements if breaking changes are needed
+
+### Impact Analysis Template
+
+When proposing changes, use this format:
+
+```
+⚠️ CHANGE IMPACT ANALYSIS
+
+**What I'm changing:**
+- [Specific change description]
+
+**Files that will be affected:**
+- File1.cs (lines X-Y) - [reason]
+- File2.cs (lines A-B) - [reason]
+
+**API Endpoints that will break/change:**
+- GET /api/endpoint1 - [impact]
+- POST /api/endpoint2 - [impact]
+
+**Database Impact:**
+- Table: [table_name] - [changes]
+- Columns: [column changes]
+- Migrations needed: [yes/no]
+- Data migration required: [yes/no]
+
+**Frontend/UI Impact:**
+- Component: [component_name] - [impact]
+- Page: [page_name] - [impact]
+
+**Breaking Changes:**
+- [List all breaking changes]
+
+**Do you want me to proceed with these changes?**
+```
+
+### Enforcement
+
+- **VIOLATION OF THESE RULES IS CRITICAL**
+- If you proceed without impact analysis and confirmation, you MUST immediately:
+  1. Revert the changes
+  2. Perform the impact analysis
+  3. Get user confirmation
+  4. Then proceed with the approved changes
+
+---
+
+## Build and Compilation Checks
+
+### Mandatory Build Verification
+- **ALWAYS** run `dotnet build` after making any code changes
+- **ALWAYS** check for compilation errors before completing any task
+- **ALWAYS** verify the solution builds successfully: `dotnet build APIServiceManagement.sln`
+- If build fails, fix ALL errors before proceeding
+- Check for warnings and address critical ones
+
+### Build Commands
+```bash
+# Full solution build
+dotnet build APIServiceManagement.sln
+
+# Build specific project
+dotnet build src/APIServiceManagement.API/APIServiceManagement.API.csproj
+
+# Clean and rebuild
+dotnet clean && dotnet build
+
+# Restore packages if needed
+dotnet restore
+```
+
+## Code Quality and Syntax Checks
+
+### C# Syntax Validation
+- **ALWAYS** verify all code blocks have proper opening/closing braces `{}`
+- **ALWAYS** check for missing semicolons `;` at end of statements
+- **ALWAYS** verify all `using` statements are present and correct
+- **ALWAYS** check for proper string interpolation syntax
+- **ALWAYS** verify nullable reference types are handled correctly (`?`, `!`, `Nullable<T>`)
+- **ALWAYS** check for proper async/await patterns
+- **ALWAYS** verify LINQ queries are properly formatted
+
+### Common Syntax Issues to Check
+- Missing closing braces `}` or parentheses `)`
+- Unclosed string literals
+- Missing commas in object/collection initializers
+- Incorrect method signatures (parameter types, return types)
+- Missing `await` keywords in async methods
+- Incorrect `using` statements or missing namespaces
+
+## API-Specific Validation
+
+### Controller Validation
+- **ALWAYS** verify all controllers have proper `[ApiController]` attribute
+- **ALWAYS** check route attributes `[Route]`, `[HttpGet]`, `[HttpPost]`, etc. are correct
+- **ALWAYS** verify action methods return proper HTTP status codes
+- **ALWAYS** check for proper model validation using `[FromBody]`, `[FromQuery]`, etc.
+- **ALWAYS** verify error handling (try-catch blocks, proper exception responses)
+
+### Dependency Injection Checks
+- **ALWAYS** verify all services are registered in `Program.cs` or `Startup.cs`
+- **ALWAYS** check service lifetimes are appropriate (Singleton, Scoped, Transient)
+- **ALWAYS** verify constructor injection is used correctly
+- **ALWAYS** check for circular dependencies
+
+### Database Context Validation
+- **ALWAYS** verify `AppDbContext` is properly configured
+- **ALWAYS** check database migrations are up to date
+- **ALWAYS** verify connection strings are properly configured
+- **ALWAYS** check for proper disposal of database contexts
+
+### Entity Framework Checks
+- **ALWAYS** verify entity configurations are correct
+- **ALWAYS** check for proper navigation properties
+- **ALWAYS** verify foreign key relationships are properly defined
+- **ALWAYS** check for proper indexes on frequently queried columns
+
+## Execution and Runtime Checks
+
+### Runtime Validation
+- **ALWAYS** verify the API starts without errors: `dotnet run --project src/APIServiceManagement.API`
+- **ALWAYS** check Swagger/OpenAPI documentation is accessible
+- **ALWAYS** verify all endpoints are registered and accessible
+- **ALWAYS** test critical endpoints manually or verify they exist
+
+### Configuration Checks
+- **ALWAYS** verify `appsettings.json` and `appsettings.Development.json` are properly configured
+- **ALWAYS** check environment variables are properly loaded
+- **ALWAYS** verify JWT authentication configuration is correct
+- **ALWAYS** check CORS settings are appropriate
+- **ALWAYS** verify logging configuration
+
+### Security Validation
+- **ALWAYS** verify authentication/authorization attributes are properly applied
+- **ALWAYS** check for proper input validation using FluentValidation
+- **ALWAYS** verify sensitive data is not exposed in responses
+- **ALWAYS** check for SQL injection vulnerabilities (use parameterized queries)
+- **ALWAYS** verify password hashing is implemented correctly
+
+## Testing and Quality Assurance
+
+### Pre-Completion Checklist
+- [ ] Solution builds without errors
+- [ ] All compilation warnings are addressed (or documented)
+- [ ] All syntax errors are fixed (braces, semicolons, etc.)
+- [ ] API starts successfully
+- [ ] Swagger documentation is accessible
+- [ ] All new endpoints are tested
+- [ ] Error handling is implemented
+- [ ] Logging is properly configured
+- [ ] Database migrations are applied
+- [ ] No sensitive data is exposed
+
+## Project Structure Validation
+
+### Architecture Checks
+- **ALWAYS** verify code follows Clean Architecture principles:
+  - Domain layer has no dependencies
+  - Application layer depends only on Domain
+  - Infrastructure layer depends on Application and Domain
+  - API layer depends on Application and Infrastructure
+- **ALWAYS** check DTOs are in Application layer
+- **ALWAYS** verify entities are in Domain layer
+- **ALWAYS** check repositories/services are properly separated
+
+## Performance Considerations
+
+- **ALWAYS** check for N+1 query problems in Entity Framework
+- **ALWAYS** verify proper use of `.Include()` for eager loading
+- **ALWAYS** check for proper pagination on list endpoints
+- **ALWAYS** verify async methods are used for I/O operations
+- **ALWAYS** check for proper disposal of resources (IDisposable)
+
+## Error Handling Standards
+
+- **ALWAYS** use proper exception handling with try-catch blocks
+- **ALWAYS** return appropriate HTTP status codes:
+  - 200 OK for successful GET requests
+  - 201 Created for successful POST requests
+  - 204 No Content for successful DELETE requests
+  - 400 Bad Request for validation errors
+  - 401 Unauthorized for authentication failures
+  - 403 Forbidden for authorization failures
+  - 404 Not Found for missing resources
+  - 500 Internal Server Error for unexpected errors
+- **ALWAYS** log exceptions appropriately
+- **ALWAYS** avoid exposing internal error details in production
+
+## Documentation Requirements
+
+- **ALWAYS** add XML comments to public APIs
+- **ALWAYS** verify Swagger documentation is complete
+- **ALWAYS** document complex business logic
+- **ALWAYS** include examples in API documentation
+
+## Final Verification Steps
+
+Before marking any task as complete:
+1. Run `dotnet build` - must succeed
+2. Run `dotnet run` - API must start successfully
+3. Check Swagger UI - all endpoints must be visible
+4. Verify no runtime errors in console
+5. Test at least one endpoint manually
+6. Check logs for any warnings or errors
+7. Verify all syntax is correct (no missing braces, semicolons, etc.)

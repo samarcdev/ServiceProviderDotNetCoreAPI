@@ -7,4 +7,5 @@ namespace APIServiceManagement.Application.Interfaces.Services;
 public interface IPdfGenerationService
 {
     Task<byte[]> GenerateInvoicePdfAsync(InvoiceResponse invoice, CancellationToken cancellationToken = default);
+    Task<byte[]> GenerateCreditNotePdfAsync(CreditNoteResponse creditNote, CancellationToken cancellationToken = default);
 }

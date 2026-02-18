@@ -73,6 +73,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IInvoiceService, InvoiceService>();
+        services.AddScoped<ICreditNoteService, CreditNoteService>();
         services.AddScoped<IPdfGenerationService, PdfGenerationService>();
         services.AddScoped<INotificationService, EmailNotificationService>();
 

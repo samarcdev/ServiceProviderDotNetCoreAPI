@@ -50,6 +50,12 @@ public class AppDbContext : DbContext
     public DbSet<InvoiceTax> InvoiceTaxes { get; set; }
     public DbSet<InvoiceDiscount> InvoiceDiscounts { get; set; }
     public DbSet<InvoiceAddOn> InvoiceAddOns { get; set; }
+    public DbSet<CreditNoteMaster> CreditNoteMasters { get; set; }
+    public DbSet<CreditNoteTax> CreditNoteTaxes { get; set; }
+    public DbSet<CreditNoteDiscount> CreditNoteDiscounts { get; set; }
+    public DbSet<CreditNoteAddOn> CreditNoteAddOns { get; set; }
+    public DbSet<CreditNoteAuditHistory> CreditNoteAuditHistories { get; set; }
+    public DbSet<CreditNoteApplication> CreditNoteApplications { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -367,6 +373,113 @@ public class AppDbContext : DbContext
                 .WithMany(i => i.InvoiceAddOns)
                 .HasForeignKey(e => e.InvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure CreditNoteMaster entity relationships
+        modelBuilder.Entity<CreditNoteMaster>(entity =>
+        {
+            entity.HasOne(e => e.Invoice)
+                .WithMany()
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Booking)
+                .WithMany()
+                .HasForeignKey(e => e.BookingId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Customer)
+                .WithMany()
+                .HasForeignKey(e => e.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(e => e.ServiceProviderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasOne(e => e.Service)
+                .WithMany()
+                .HasForeignKey(e => e.ServiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.CreditNoteNumber)
+                .IsUnique();
+        });
+
+        // Configure CreditNoteTax entity relationships
+        modelBuilder.Entity<CreditNoteTax>(entity =>
+        {
+            entity.HasOne(e => e.CreditNote)
+                .WithMany(cn => cn.CreditNoteTaxes)
+                .HasForeignKey(e => e.CreditNoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Tax)
+                .WithMany()
+                .HasForeignKey(e => e.TaxId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configure CreditNoteDiscount entity relationships
+        modelBuilder.Entity<CreditNoteDiscount>(entity =>
+        {
+            entity.HasOne(e => e.CreditNote)
+                .WithMany(cn => cn.CreditNoteDiscounts)
+                .HasForeignKey(e => e.CreditNoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Discount)
+                .WithMany()
+                .HasForeignKey(e => e.DiscountId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // Configure CreditNoteAddOn entity relationships
+        modelBuilder.Entity<CreditNoteAddOn>(entity =>
+        {
+            entity.HasOne(e => e.CreditNote)
+                .WithMany(cn => cn.CreditNoteAddOns)
+                .HasForeignKey(e => e.CreditNoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configure CreditNoteAuditHistory entity relationships
+        modelBuilder.Entity<CreditNoteAuditHistory>(entity =>
+        {
+            entity.HasOne(e => e.CreditNote)
+                .WithMany(cn => cn.AuditHistory)
+                .HasForeignKey(e => e.CreditNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.ChangedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.ChangedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configure CreditNoteApplication entity relationships
+        modelBuilder.Entity<CreditNoteApplication>(entity =>
+        {
+            entity.HasOne(e => e.CreditNote)
+                .WithMany(cn => cn.Applications)
+                .HasForeignKey(e => e.CreditNoteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Invoice)
+                .WithMany()
+                .HasForeignKey(e => e.InvoiceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.AppliedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.AppliedBy)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
     }
