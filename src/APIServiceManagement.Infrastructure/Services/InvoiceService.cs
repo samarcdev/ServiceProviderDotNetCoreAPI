@@ -789,4 +789,61 @@ public class InvoiceService : IInvoiceService
             } : null
         };
     }
+
+    public async Task<ServiceResult> ListInvoicesAsync(int pageNumber = 1, int pageSize = 10, string? paymentStatus = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var query = _context.InvoiceMasters
+                .Include(i => i.Booking)
+                    .ThenInclude(b => b!.Customer)
+                .Include(i => i.Booking)
+                    .ThenInclude(b => b!.ServiceProvider)
+                .Include(i => i.Booking)
+                    .ThenInclude(b => b!.Service)
+                .AsQueryable();
+
+            // Filter by payment status if provided
+            if (!string.IsNullOrWhiteSpace(paymentStatus))
+            {
+                query = query.Where(i => i.PaymentStatus == paymentStatus);
+            }
+
+            // Get total count before pagination
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            // Apply pagination
+            var invoices = await query
+                .OrderByDescending(i => i.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+
+            // Map to response DTOs
+            var invoiceResponses = new List<InvoiceResponse>();
+            foreach (var invoice in invoices)
+            {
+                var response = await MapToInvoiceResponseAsync(invoice, cancellationToken);
+                invoiceResponses.Add(response);
+            }
+
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var listResponse = new InvoiceListResponse
+            {
+                Items = invoiceResponses,
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalPages = totalPages
+            };
+
+            return ServiceResult.Ok(listResponse);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error listing invoices");
+            return ServiceResult.BadRequest($"An error occurred while listing invoices: {ex.Message}");
+        }
+    }
 }

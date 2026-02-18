@@ -80,3 +80,12 @@ public class InvoicePdfResponse
     public string FileName { get; set; } = string.Empty;
     public string ContentType { get; set; } = "application/pdf";
 }
+
+public class InvoiceListResponse
+{
+    public List<InvoiceResponse> Items { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int PageNumber { get; set; }
+    public int PageSize { get; set; }
+    public int TotalPages { get; set; }
+}

@@ -14,4 +14,5 @@ public interface IInvoiceService
     Task<ServiceResult> GetInvoiceByBookingIdAsync(Guid bookingId, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetInvoicePdfAsync(int invoiceId, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetInvoicePdfByInvoiceNumberAsync(string invoiceNumber, CancellationToken cancellationToken = default);
+    Task<ServiceResult> ListInvoicesAsync(int pageNumber = 1, int pageSize = 10, string? paymentStatus = null, CancellationToken cancellationToken = default);
 }
