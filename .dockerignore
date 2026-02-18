@@ -1,0 +1,45 @@
+# Ignore build outputs
+**/bin/
+**/obj/
+**/Debug/
+**/Release/
+
+# Ignore IDE files
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Ignore test results
+TestResults/
+*.trx
+*.coverage
+
+# Ignore local settings
+**/appsettings.Development.json
+**/Properties/launchSettings.json
+
+# Ignore uploads (will be created at runtime)
+**/uploads/
+
+# Ignore git files
+.git/
+.gitignore
+.gitattributes
+
+# Ignore documentation files (optional - remove if you want them in image)
+*.md
+*.docx
+
+# Ignore scripts folder
+scripts/
+
+# Ignore cursor files
+.cursor/
+
+# Ignore temporary files
+*.tmp
+*.log
+*.cache
