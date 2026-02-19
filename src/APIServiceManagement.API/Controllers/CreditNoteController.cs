@@ -85,8 +85,9 @@ public class CreditNoteController : ControllerBase
 
     /// <summary>
     /// List all credit notes with filters (Admin only)
+    /// GET api/CreditNote?pageNumber=1&amp;pageSize=10
     /// </summary>
-    [HttpGet("list")]
+    [HttpGet]
     [AuthorizeAdmin]
     public async Task<IActionResult> ListCreditNotes(
         [FromQuery] int? pageNumber,
