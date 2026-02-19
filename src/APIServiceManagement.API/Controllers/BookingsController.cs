@@ -122,6 +122,7 @@ public class BookingsController : ControllerBase
         [FromQuery] string? sortOrder,
         [FromQuery] int page = 1,
         [FromQuery] int limit = 20,
+        [FromQuery] string? search = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _bookingService.GetBookingRequestsAsync(
@@ -136,6 +137,7 @@ public class BookingsController : ControllerBase
             sortOrder,
             page,
             limit,
+            search,
             cancellationToken);
         return result.ToActionResult();
     }

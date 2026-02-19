@@ -823,7 +823,7 @@ public class ServiceProviderProfileService : IServiceProviderProfileService
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
-            return ServiceResult.Ok(new { message = "Services updated successfully." });
+            return ServiceResult.Ok(new OperationResponse { Success = true, Message = "Services updated successfully." });
         }
         catch (Exception ex)
         {

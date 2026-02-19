@@ -21,21 +21,18 @@ public static class DependencyInjection
             if (!string.IsNullOrEmpty(connectionString))
             {
                 var builder = new NpgsqlConnectionStringBuilder(connectionString);
-                builder.Timeout = 30; // Connection timeout in seconds (default is 15)
-                builder.KeepAlive = 30; // Keep-alive interval in seconds
-                builder.Pooling = true; // Enable connection pooling
+                builder.Timeout = 60; // Connection timeout in seconds
+                builder.KeepAlive = 30;
+                builder.Pooling = true;
                 builder.MinPoolSize = 0;
                 builder.MaxPoolSize = 100;
-                
+
                 options.UseNpgsql(builder.ConnectionString, npgsqlOptions =>
                 {
-                    // Increase command timeout to 60 seconds (default is 30)
-                    npgsqlOptions.CommandTimeout(60);
-                    
-                    // Enable retry on failure for transient errors
+                    npgsqlOptions.CommandTimeout(120); // 2 minutes for slow queries
                     npgsqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 3,
-                        maxRetryDelay: TimeSpan.FromSeconds(5),
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(10),
                         errorCodesToAdd: null);
                 });
             }

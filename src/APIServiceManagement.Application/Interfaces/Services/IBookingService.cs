@@ -25,6 +25,7 @@ public interface IBookingService
         string? sortOrder,
         int page,
         int limit,
+        string? search,
         CancellationToken cancellationToken = default);
     Task<ServiceResult> AssignServiceProviderAsync(Guid? adminId, BookingAssignmentRequest request, CancellationToken cancellationToken = default);
     Task<ServiceResult> UpdateBookingStatusAsync(Guid bookingId, BookingUpdateRequest request, CancellationToken cancellationToken = default);

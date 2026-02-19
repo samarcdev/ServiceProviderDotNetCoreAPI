@@ -1,6 +1,36 @@
+using System;
 using System.Collections.Generic;
 
 namespace APIServiceManagement.Application.DTOs.Responses;
+
+public class WeeklyRevenueDayDto
+{
+    public DateTime Date { get; set; }
+    public string DayName { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+}
+
+public class ServiceProviderPerformanceDto
+{
+    public int JobsThisPeriod { get; set; }
+    public int JobsPreviousPeriod { get; set; }
+    public decimal PercentChange { get; set; }
+    public decimal AverageRating { get; set; }
+}
+
+public class ServiceProviderKpiDto
+{
+    public int Current { get; set; }
+    public int Previous { get; set; }
+    public decimal PercentChange { get; set; }
+}
+
+public class ServiceProviderRevenueKpiDto
+{
+    public decimal Current { get; set; }
+    public decimal Previous { get; set; }
+    public decimal PercentChange { get; set; }
+}
 
 public class CustomerDashboardResponse
 {
@@ -31,6 +61,15 @@ public class ServiceProviderDashboardResponse
     public int TotalAssignments { get; set; }
     public int PendingAssignments { get; set; }
     public int CompletedAssignments { get; set; }
+
+    // Extended dashboard data
+    public ServiceProviderKpiDto? TotalJobVolume { get; set; }
+    public ServiceProviderRevenueKpiDto? TotalRevenue { get; set; }
+    public ServiceProviderKpiDto? CompletedJobs { get; set; }
+    public ServiceProviderKpiDto? PendingJobs { get; set; }
+    public List<BookingRequestDto> TodaysSchedule { get; set; } = new();
+    public List<WeeklyRevenueDayDto> WeeklyRevenue { get; set; } = new();
+    public ServiceProviderPerformanceDto? YourPerformance { get; set; }
 }
 
 public class PincodeStatResponse

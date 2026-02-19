@@ -639,6 +639,7 @@ public class BookingService : IBookingService
         string? sortOrder,
         int page,
         int limit,
+        string? search,
         CancellationToken cancellationToken = default)
     {
         try
@@ -665,8 +666,14 @@ public class BookingService : IBookingService
                     }
                     else
                     {
-                        // No matching statuses found, return empty result
-                        return ServiceResult.Ok(new List<BookingRequestDto>());
+                        return ServiceResult.Ok(new PagedBookingRequestsResponse
+                        {
+                            Items = new List<BookingRequestDto>(),
+                            TotalCount = 0,
+                            Page = page,
+                            PageSize = limit,
+                            TotalPages = 0
+                        });
                     }
                 }
             }
@@ -709,6 +716,20 @@ public class BookingService : IBookingService
                 query = query.Where(b => b.CreatedAt < dateToUtc.AddDays(1));
             }
 
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchTerm = search.Trim().ToLower();
+                var matchingServiceIds = await _context.Services
+                    .AsNoTracking()
+                    .Where(s => s.ServiceName.ToLower().Contains(searchTerm))
+                    .Select(s => s.Id)
+                    .ToListAsync(cancellationToken);
+                query = query.Where(b =>
+                    (b.CustomerName != null && b.CustomerName.ToLower().Contains(searchTerm)) ||
+                    matchingServiceIds.Contains(b.ServiceId) ||
+                    b.Id.ToString().ToLower().Contains(searchTerm));
+            }
+
             var ordering = (sortBy ?? SortFieldNames.CreatedAt).ToLowerInvariant();
             var ascending = string.Equals(sortOrder, SortOrder.Ascending, StringComparison.OrdinalIgnoreCase);
 
@@ -729,7 +750,9 @@ public class BookingService : IBookingService
             page = Math.Max(1, page);
             limit = Math.Max(1, Math.Min(limit, 100)); // Cap limit at 100 to prevent excessive queries
             var skip = (page - 1) * limit;
-            
+
+            var totalCount = await orderedQuery.CountAsync(cancellationToken);
+
             var bookings = await orderedQuery
                 .Skip(skip)
                 .Take(limit)
@@ -737,7 +760,14 @@ public class BookingService : IBookingService
 
             if (bookings.Count == 0)
             {
-                return ServiceResult.Ok(new List<BookingRequestDto>());
+                return ServiceResult.Ok(new PagedBookingRequestsResponse
+                {
+                    Items = new List<BookingRequestDto>(),
+                    TotalCount = totalCount,
+                    Page = page,
+                    PageSize = limit,
+                    TotalPages = totalCount > 0 ? (int)Math.Ceiling(totalCount / (double)limit) : 0
+                });
             }
 
             // Batch load all related data to avoid N+1 queries
@@ -757,10 +787,12 @@ public class BookingService : IBookingService
             Dictionary<int, Service> services;
             if (serviceIds.Count > 0)
             {
-                services = await _context.Services
+                var servicesList = await _context.Services
                     .AsNoTracking()
+                    .Include(s => s.Category)
                     .Where(s => serviceIds.Contains(s.Id))
-                    .ToDictionaryAsync(s => s.Id, cancellationToken);
+                    .ToListAsync(cancellationToken);
+                services = servicesList.ToDictionary(s => s.Id);
             }
             else
             {
@@ -808,13 +840,18 @@ public class BookingService : IBookingService
                 catch (Exception ex)
                 {
                     // Log the error but continue processing other bookings
-                    // In production, you might want to log this to a logging service
                     System.Diagnostics.Debug.WriteLine($"Error building DTO for booking {booking.Id}: {ex.Message}");
-                    // Continue with next booking
                 }
             }
 
-            return ServiceResult.Ok(result);
+            return ServiceResult.Ok(new PagedBookingRequestsResponse
+            {
+                Items = result,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = limit,
+                TotalPages = (int)Math.Ceiling(totalCount / (double)limit)
+            });
         }
         catch (Exception ex)
         {
@@ -1401,10 +1438,12 @@ public class BookingService : IBookingService
         }
 
         var statusIds = await GetStatusIdsByCodesAsync(new[] { 
+            BookingStatusCodes.Pending,
             BookingStatusCodes.Assigned, 
             BookingStatusCodes.InProgress, 
             BookingStatusCodes.Completed 
         }, cancellationToken);
+        var pendingStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Pending);
         var assignedStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Assigned);
         var inProgressStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.InProgress);
         var completedStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Completed);
@@ -1453,7 +1492,137 @@ public class BookingService : IBookingService
             response.CompletedBookings.Add(await BuildBookingDtoAsync(booking, cancellationToken));
         }
 
+        // Week boundaries (Monday-Sunday) for KPI comparisons
+        var utcNow = DateTime.UtcNow;
+        var today = utcNow.Date;
+        var daysFromMonday = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
+        var startOfCurrentWeek = today.AddDays(-daysFromMonday);
+        var endOfCurrentWeek = startOfCurrentWeek.AddDays(7).AddTicks(-1);
+        var startOfPreviousWeek = startOfCurrentWeek.AddDays(-7);
+        var endOfPreviousWeek = startOfCurrentWeek.AddTicks(-1);
+
+        // Total Job Volume: count of bookings assigned to provider in each week (by CreatedAt)
+        var totalJobVolumeCurrent = await _context.BookingRequests
+            .AsNoTracking()
+            .CountAsync(b => b.ServiceProviderId == providerId.Value &&
+                b.CreatedAt >= startOfCurrentWeek && b.CreatedAt <= endOfCurrentWeek, cancellationToken);
+        var totalJobVolumePrev = await _context.BookingRequests
+            .AsNoTracking()
+            .CountAsync(b => b.ServiceProviderId == providerId.Value &&
+                b.CreatedAt >= startOfPreviousWeek && b.CreatedAt <= endOfPreviousWeek, cancellationToken);
+        response.TotalJobVolume = BuildKpiWithPercentChange(totalJobVolumeCurrent, totalJobVolumePrev);
+
+        // Total Revenue: from InvoiceMaster for provider
+        var totalRevenueCurrent = await _context.InvoiceMasters
+            .AsNoTracking()
+            .Where(i => i.ServiceProviderId == providerId.Value &&
+                (i.InvoiceDate ?? i.CreatedAt) >= startOfCurrentWeek &&
+                (i.InvoiceDate ?? i.CreatedAt) <= endOfCurrentWeek)
+            .SumAsync(i => i.TotalAmount, cancellationToken);
+        var totalRevenuePrev = await _context.InvoiceMasters
+            .AsNoTracking()
+            .Where(i => i.ServiceProviderId == providerId.Value &&
+                (i.InvoiceDate ?? i.CreatedAt) >= startOfPreviousWeek &&
+                (i.InvoiceDate ?? i.CreatedAt) <= endOfPreviousWeek)
+            .SumAsync(i => i.TotalAmount, cancellationToken);
+        response.TotalRevenue = BuildRevenueKpiWithPercentChange(totalRevenueCurrent, totalRevenuePrev);
+
+        // Completed Jobs: count by CompletedAt in each week
+        var completedCurrent = await _context.BookingRequests
+            .AsNoTracking()
+            .CountAsync(b => b.ServiceProviderId == providerId.Value && b.StatusId == completedStatusId &&
+                b.CompletedAt.HasValue && b.CompletedAt.Value >= startOfCurrentWeek && b.CompletedAt.Value <= endOfCurrentWeek, cancellationToken);
+        var completedPrev = await _context.BookingRequests
+            .AsNoTracking()
+            .CountAsync(b => b.ServiceProviderId == providerId.Value && b.StatusId == completedStatusId &&
+                b.CompletedAt.HasValue && b.CompletedAt.Value >= startOfPreviousWeek && b.CompletedAt.Value <= endOfPreviousWeek, cancellationToken);
+        response.CompletedJobs = BuildKpiWithPercentChange(completedCurrent, completedPrev);
+
+        // Pending Jobs: assigned but not started (Assigned status) - "Awaiting Assignment"
+        var pendingCurrent = await _context.BookingRequests
+            .AsNoTracking()
+            .CountAsync(b => b.ServiceProviderId == providerId.Value && b.StatusId == assignedStatusId &&
+                b.CreatedAt >= startOfCurrentWeek && b.CreatedAt <= endOfCurrentWeek, cancellationToken);
+        var pendingPrev = await _context.BookingRequests
+            .AsNoTracking()
+            .CountAsync(b => b.ServiceProviderId == providerId.Value && b.StatusId == assignedStatusId &&
+                b.CreatedAt >= startOfPreviousWeek && b.CreatedAt <= endOfPreviousWeek, cancellationToken);
+        response.PendingJobs = BuildKpiWithPercentChange(pendingCurrent, pendingPrev);
+
+        // Today's Schedule: jobs with PreferredDate = today, ordered by PreferredTime (nulls last)
+        var todaysScheduleBookings = await _context.BookingRequests
+            .AsNoTracking()
+            .Where(b => b.ServiceProviderId == providerId.Value &&
+                b.PreferredDate.HasValue && b.PreferredDate.Value.Date == today &&
+                (b.StatusId == assignedStatusId || b.StatusId == inProgressStatusId || b.StatusId == completedStatusId))
+            .OrderBy(b => b.PreferredTime == null)
+            .ThenBy(b => b.PreferredTime)
+            .Take(10)
+            .ToListAsync(cancellationToken);
+        foreach (var booking in todaysScheduleBookings)
+        {
+            response.TodaysSchedule.Add(await BuildBookingDtoAsync(booking, cancellationToken));
+        }
+
+        // Weekly Revenue: daily breakdown for Mon-Sun of current week
+        var dayNames = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+        for (var i = 0; i < 7; i++)
+        {
+            var dayStart = startOfCurrentWeek.AddDays(i);
+            var dayEnd = dayStart.AddDays(1).AddTicks(-1);
+            var dayAmount = await _context.InvoiceMasters
+                .AsNoTracking()
+                .Where(inv => inv.ServiceProviderId == providerId.Value &&
+                    (inv.InvoiceDate ?? inv.CreatedAt) >= dayStart &&
+                    (inv.InvoiceDate ?? inv.CreatedAt) <= dayEnd)
+                .SumAsync(inv => inv.TotalAmount, cancellationToken);
+            response.WeeklyRevenue.Add(new WeeklyRevenueDayDto
+            {
+                Date = dayStart,
+                DayName = dayNames[i],
+                Amount = dayAmount
+            });
+        }
+
+        // Your Performance: jobs completed this week, avg rating, % change vs previous week
+        var jobsThisWeek = completedCurrent;
+        var jobsPrevWeek = completedPrev;
+        var completedWithRating = await _context.BookingRequests
+            .AsNoTracking()
+            .Where(b => b.ServiceProviderId == providerId.Value && b.StatusId == completedStatusId &&
+                b.CompletedAt.HasValue && b.CompletedAt.Value >= startOfCurrentWeek && b.CompletedAt.Value <= endOfCurrentWeek &&
+                b.CustomerRating.HasValue)
+            .Select(b => b.CustomerRating!.Value)
+            .ToListAsync(cancellationToken);
+        var avgRating = completedWithRating.Count > 0 ? (decimal)completedWithRating.Average() : 0;
+        var perfPercentChange = jobsPrevWeek > 0
+            ? Math.Round((decimal)(jobsThisWeek - jobsPrevWeek) / jobsPrevWeek * 100, 1)
+            : (jobsThisWeek > 0 ? 100m : 0m);
+        response.YourPerformance = new ServiceProviderPerformanceDto
+        {
+            JobsThisPeriod = jobsThisWeek,
+            JobsPreviousPeriod = jobsPrevWeek,
+            PercentChange = perfPercentChange,
+            AverageRating = Math.Round(avgRating, 1)
+        };
+
         return ServiceResult.Ok(response);
+    }
+
+    private static ServiceProviderKpiDto BuildKpiWithPercentChange(int current, int previous)
+    {
+        var percentChange = previous > 0
+            ? Math.Round((decimal)(current - previous) / previous * 100, 1)
+            : (current > 0 ? 100m : 0m);
+        return new ServiceProviderKpiDto { Current = current, Previous = previous, PercentChange = percentChange };
+    }
+
+    private static ServiceProviderRevenueKpiDto BuildRevenueKpiWithPercentChange(decimal current, decimal previous)
+    {
+        var percentChange = previous > 0
+            ? Math.Round((current - previous) / previous * 100, 1)
+            : (current > 0 ? 100m : 0m);
+        return new ServiceProviderRevenueKpiDto { Current = current, Previous = previous, PercentChange = percentChange };
     }
 
     public async Task<ServiceResult> GetUserPincodePreferencesAsync(Guid? userId, CancellationToken cancellationToken = default)
@@ -2255,7 +2424,8 @@ public class BookingService : IBookingService
                     Id = service.Id,
                     ServiceName = service.ServiceName,
                     Description = service.Description,
-                    CategoryId = service.CategoryId ?? 0
+                    CategoryId = service.CategoryId ?? 0,
+                    CategoryName = service.Category?.CategoryName
                 },
             Customer = MapUser(booking.CustomerId),
             ServiceProvider = booking.ServiceProviderId.HasValue
@@ -2283,6 +2453,7 @@ public class BookingService : IBookingService
 
         var service = await _context.Services
             .AsNoTracking()
+            .Include(s => s.Category)
             .FirstOrDefaultAsync(s => s.Id == booking.ServiceId, cancellationToken);
 
         var userIds = new List<Guid> { booking.CustomerId };
@@ -2375,7 +2546,8 @@ public class BookingService : IBookingService
                     Id = service.Id,
                     ServiceName = service.ServiceName,
                     Description = service.Description,
-                    CategoryId = service.CategoryId ?? 0
+                    CategoryId = service.CategoryId ?? 0,
+                    CategoryName = service.Category?.CategoryName
                 },
             Customer = MapUser(booking.CustomerId),
             ServiceProvider = booking.ServiceProviderId.HasValue
@@ -2476,7 +2648,8 @@ public class BookingService : IBookingService
                     Id = service.Id,
                     ServiceName = service.ServiceName,
                     Description = service.Description,
-                    CategoryId = service.CategoryId ?? 0
+                    CategoryId = service.CategoryId ?? 0,
+                    CategoryName = service.Category?.CategoryName
                 },
             Customer = MapUser(booking.CustomerId),
             ServiceProvider = booking.ServiceProviderId.HasValue
