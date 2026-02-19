@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace APIServiceManagement.Application.DTOs.Responses;
 
@@ -144,6 +145,7 @@ public class CreditNoteSummaryReportResponse
 
 public class CreditNoteListResponse
 {
+    [JsonPropertyName("items")]
     public List<CreditNoteResponse> CreditNotes { get; set; } = new();
     public int TotalCount { get; set; }
     public int PageNumber { get; set; }
