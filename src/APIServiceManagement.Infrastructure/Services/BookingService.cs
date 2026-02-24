@@ -58,6 +58,20 @@ public class BookingService : IBookingService
             .Include(service => service.Category)
             .ToListAsync(cancellationToken);
 
+        // Get prices for all services
+        var serviceIds = services.Select(service => service.Id).ToList();
+        var allServicePrices = await _context.ServicePrices
+            .AsNoTracking()
+            .Where(price => price.IsActive && price.ServiceId.HasValue && serviceIds.Contains(price.ServiceId.Value))
+            .ToListAsync(cancellationToken);
+
+        var servicePrices = allServicePrices
+            .GroupBy(price => price.ServiceId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(price => price.EffectiveFrom).First().Charges
+            );
+
         var response = new ServiceAvailabilityResponse
         {
             Success = true,
@@ -73,7 +87,100 @@ public class BookingService : IBookingService
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
                 IsAvailable = true,
-                CalculatedPrice = 0,
+                CalculatedPrice = servicePrices.TryGetValue(service.Id, out var price) ? price : 0,
+                PriceRating = 1
+            }).ToList()
+        };
+
+        return ServiceResult.Ok(response);
+    }
+
+    public async Task<ServiceResult> GetTopBookedServicesAsync(int days = 90, int limit = 24, CancellationToken cancellationToken = default)
+    {
+        var lookbackDays = days <= 0 ? 90 : Math.Min(days, 365);
+        var takeLimit = limit <= 0 ? 24 : Math.Min(limit, 100);
+        var sinceDate = DateTime.UtcNow.AddDays(-lookbackDays);
+
+        var cancelledStatusId = await _context.BookingStatuses
+            .AsNoTracking()
+            .Where(s => s.IsActive && s.Code == BookingStatusCodes.Cancelled)
+            .Select(s => (int?)s.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var topServiceCounts = await _context.BookingRequests
+            .AsNoTracking()
+            .Where(booking =>
+                booking.CreatedAt >= sinceDate &&
+                (!cancelledStatusId.HasValue || booking.StatusId != cancelledStatusId.Value))
+            .GroupBy(booking => booking.ServiceId)
+            .Select(group => new
+            {
+                ServiceId = group.Key,
+                BookingCount = group.Count()
+            })
+            .OrderByDescending(item => item.BookingCount)
+            .Take(takeLimit)
+            .ToListAsync(cancellationToken);
+
+        var topServiceIds = topServiceCounts
+            .Select(item => item.ServiceId)
+            .ToList();
+
+        if (topServiceIds.Count == 0)
+        {
+            topServiceIds = await _context.Services
+                .AsNoTracking()
+                .Where(service => service.IsActive)
+                .OrderBy(service => service.ServiceName)
+                .Select(service => service.Id)
+                .Take(takeLimit)
+                .ToListAsync(cancellationToken);
+        }
+
+        var services = await _context.Services
+            .AsNoTracking()
+            .Include(service => service.Category)
+            .Where(service => service.IsActive && topServiceIds.Contains(service.Id))
+            .ToListAsync(cancellationToken);
+
+        var serviceIdOrder = topServiceIds
+            .Select((serviceId, index) => new { serviceId, index })
+            .ToDictionary(item => item.serviceId, item => item.index);
+
+        var orderedServices = services
+            .OrderBy(service => serviceIdOrder.TryGetValue(service.Id, out var index) ? index : int.MaxValue)
+            .ToList();
+
+        var serviceIds = orderedServices.Select(service => service.Id).ToList();
+        var allServicePrices = await _context.ServicePrices
+            .AsNoTracking()
+            .Where(price => price.IsActive && price.ServiceId.HasValue && serviceIds.Contains(price.ServiceId.Value))
+            .ToListAsync(cancellationToken);
+
+        var servicePrices = allServicePrices
+            .GroupBy(price => price.ServiceId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(price => price.EffectiveFrom).First().Charges
+            );
+
+        var response = new ServiceAvailabilityResponse
+        {
+            Success = true,
+            Message = "Top booked services",
+            Services = orderedServices.Select(service => new ServiceAvailabilityItem
+            {
+                ServiceId = service.Id.ToString(),
+                ServiceName = service.ServiceName,
+                Description = service.Description,
+                CategoryId = service.CategoryId ?? 0,
+                Image = string.IsNullOrWhiteSpace(service.Image) ? null : service.Image,
+                Icon = string.IsNullOrWhiteSpace(service.Icon) ? null : service.Icon,
+                CategoryImage = service.Category?.Image,
+                CategoryIcon = service.Category?.Icon,
+                CategoryName = service.Category?.CategoryName ?? "Uncategorized",
+                IsAvailable = true,
+                CalculatedPrice = servicePrices.TryGetValue(service.Id, out var price) ? price : 0,
                 PriceRating = 1
             }).ToList()
         };
@@ -105,13 +212,28 @@ public class BookingService : IBookingService
             });
         }
 
-        var serviceIdsInPincode = await _context.ServiceProviderPincodePreferences
+        // Optimized query: First get user IDs for the pincode, then get their active services
+        var userIdsInPincode = await _context.ServiceProviderPincodePreferences
             .AsNoTracking()
             .Where(pref => pref.Pincode == normalizedPincode)
-            .Join(_context.ProviderServices.AsNoTracking().Where(ps => ps.IsActive),
-                pref => pref.UserId,
-                ps => ps.UserId,
-                (pref, ps) => ps.ServiceId)
+            .Select(pref => pref.UserId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        if (userIdsInPincode.Count == 0)
+        {
+            return ServiceResult.Ok(new ServiceAvailabilityResponse
+            {
+                Success = false,
+                Message = "No services are currently available in your area. Please try a different pincode.",
+                Services = new List<ServiceAvailabilityItem>()
+            });
+        }
+
+        var serviceIdsInPincode = await _context.ProviderServices
+            .AsNoTracking()
+            .Where(ps => ps.IsActive && userIdsInPincode.Contains(ps.UserId))
+            .Select(ps => ps.ServiceId)
             .Distinct()
             .ToListAsync(cancellationToken);
 
@@ -131,6 +253,20 @@ public class BookingService : IBookingService
             .Where(s => s.IsActive && serviceIdsInPincode.Contains(s.Id))
             .ToListAsync(cancellationToken);
 
+        // Get prices for all services
+        var serviceIds = services.Select(service => service.Id).ToList();
+        var allServicePrices = await _context.ServicePrices
+            .AsNoTracking()
+            .Where(price => price.IsActive && price.ServiceId.HasValue && serviceIds.Contains(price.ServiceId.Value))
+            .ToListAsync(cancellationToken);
+
+        var servicePrices = allServicePrices
+            .GroupBy(price => price.ServiceId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(price => price.EffectiveFrom).First().Charges
+            );
+
         var response = new ServiceAvailabilityResponse
         {
             Success = true,
@@ -147,7 +283,7 @@ public class BookingService : IBookingService
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
                 IsAvailable = true,
-                CalculatedPrice = 0,
+                CalculatedPrice = servicePrices.TryGetValue(service.Id, out var price) ? price : 0,
                 PriceRating = 1 // Default price rating
             }).ToList(),
             Message = $"{services.Count} service(s) available in your area"

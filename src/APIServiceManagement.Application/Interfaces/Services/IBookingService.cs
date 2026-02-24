@@ -9,6 +9,7 @@ namespace APIServiceManagement.Application.Interfaces.Services;
 public interface IBookingService
 {
     Task<ServiceResult> GetAllAvailableServicesAsync(CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetTopBookedServicesAsync(int days = 90, int limit = 24, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetAvailableServicesByPincodeAsync(string pincode, CancellationToken cancellationToken = default);
     Task<ServiceResult> ValidatePincodeAsync(string pincode, CancellationToken cancellationToken = default);
     Task<ServiceResult> CalculateServicePriceAsync(int serviceId, string pincode, CancellationToken cancellationToken = default);

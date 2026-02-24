@@ -31,6 +31,17 @@ public class BookingsController : ControllerBase
     }
 
     [AllowAnonymous]
+    [HttpGet("top-services")]
+    public async Task<IActionResult> GetTopBookedServices(
+        [FromQuery] int days = 90,
+        [FromQuery] int limit = 24,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _bookingService.GetTopBookedServicesAsync(days, limit, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AllowAnonymous]
     [HttpGet("available-services-by-pincode")]
     public async Task<IActionResult> GetAvailableServicesByPincode([FromQuery] string pincode, CancellationToken cancellationToken)
     {
