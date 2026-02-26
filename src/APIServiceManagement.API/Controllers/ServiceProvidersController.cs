@@ -17,15 +17,18 @@ public class ServiceProvidersController : ControllerBase
     private readonly IServiceProviderRegistrationService _registrationService;
     private readonly IServiceProviderProfileService _profileService;
     private readonly IBookingService _bookingService;
+    private readonly IProviderAvailabilityService _providerAvailabilityService;
 
     public ServiceProvidersController(
         IServiceProviderRegistrationService registrationService,
         IServiceProviderProfileService profileService,
-        IBookingService bookingService)
+        IBookingService bookingService,
+        IProviderAvailabilityService providerAvailabilityService)
     {
         _registrationService = registrationService;
         _profileService = profileService;
         _bookingService = bookingService;
+        _providerAvailabilityService = providerAvailabilityService;
     }
 
     [AllowAnonymous]
@@ -141,6 +144,30 @@ public class ServiceProvidersController : ControllerBase
     public async Task<IActionResult> UpdateServices([FromBody] ServiceProviderServicesUpdateRequest request, CancellationToken cancellationToken)
     {
         var result = await _profileService.UpdateServicesAsync(GetUserId(), request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeServiceProvider]
+    [HttpPost("check-in")]
+    public async Task<IActionResult> CheckIn([FromBody] ProviderCheckInRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _providerAvailabilityService.CheckInAsync(GetUserId(), request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeServiceProvider]
+    [HttpPost("check-out")]
+    public async Task<IActionResult> CheckOut([FromBody] ProviderCheckOutRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _providerAvailabilityService.CheckOutAsync(GetUserId(), request, cancellationToken);
+        return result.ToActionResult();
+    }
+
+    [AuthorizeServiceProvider]
+    [HttpGet("availability/today")]
+    public async Task<IActionResult> GetTodayAvailabilityStatus(CancellationToken cancellationToken)
+    {
+        var result = await _providerAvailabilityService.GetTodayStatusAsync(GetUserId(), cancellationToken);
         return result.ToActionResult();
     }
 

@@ -18,10 +18,12 @@ namespace APIServiceManagement.Infrastructure.Services;
 public class BookingService : IBookingService
 {
     private readonly AppDbContext _context;
+    private readonly IProviderAvailabilityService _providerAvailabilityService;
 
-    public BookingService(AppDbContext context)
+    public BookingService(AppDbContext context, IProviderAvailabilityService providerAvailabilityService)
     {
         _context = context;
+        _providerAvailabilityService = providerAvailabilityService;
     }
 
     private async Task<int> GetStatusIdByCodeAsync(string code, CancellationToken cancellationToken = default)
@@ -147,6 +149,7 @@ public class BookingService : IBookingService
         var response = new ServiceAvailabilityResponse
         {
             Success = true,
+            AnyProviderAvailableInPincode = true,
             Services = services.Select(service => new ServiceAvailabilityItem
             {
                 ServiceId = service.Id.ToString(),
@@ -159,6 +162,8 @@ public class BookingService : IBookingService
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
                 IsAvailable = true,
+                HasAvailableProvider = true,
+                CanBook = true,
                 CalculatedPrice = servicePrices.TryGetValue(service.Id, out var price) ? price : 0,
                 PriceRating = 1
             }).ToList()
@@ -248,6 +253,7 @@ public class BookingService : IBookingService
         {
             Success = true,
             Message = "Top booked services",
+            AnyProviderAvailableInPincode = true,
             Services = orderedServices.Select(service => new ServiceAvailabilityItem
             {
                 ServiceId = service.Id.ToString(),
@@ -260,6 +266,8 @@ public class BookingService : IBookingService
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
                 IsAvailable = true,
+                HasAvailableProvider = true,
+                CanBook = true,
                 CalculatedPrice = servicePrices.TryGetValue(service.Id, out var price) ? price : 0,
                 PriceRating = 1
             }).ToList()
@@ -292,27 +300,25 @@ public class BookingService : IBookingService
             });
         }
 
-        // Optimized query: First get user IDs for the pincode, then get their active services
-        var userIdsInPincode = await _context.ServiceProviderPincodePreferences
-            .AsNoTracking()
-            .Where(pref => pref.Pincode == normalizedPincode)
-            .Select(pref => pref.UserId)
-            .Distinct()
-            .ToListAsync(cancellationToken);
+        var businessDate = DateTime.UtcNow.Date;
+        var activeProviderIdsInPincode = await _providerAvailabilityService
+            .GetActiveProvidersByPincodeAsync(normalizedPincode, businessDate, cancellationToken);
 
-        if (userIdsInPincode.Count == 0)
+        if (activeProviderIdsInPincode.Count == 0)
         {
             return ServiceResult.Ok(new ServiceAvailabilityResponse
             {
-                Success = false,
-                Message = "No services are currently available in your area. Please try a different pincode.",
+                Success = true,
+                Pincode = normalizedPincode,
+                AnyProviderAvailableInPincode = false,
+                Message = "No providers currently available in your area.",
                 Services = new List<ServiceAvailabilityItem>()
             });
         }
 
         var serviceIdsInPincode = await _context.ProviderServices
             .AsNoTracking()
-            .Where(ps => ps.IsActive && userIdsInPincode.Contains(ps.UserId))
+            .Where(ps => ps.IsActive && activeProviderIdsInPincode.Contains(ps.UserId))
             .Select(ps => ps.ServiceId)
             .Distinct()
             .ToListAsync(cancellationToken);
@@ -321,8 +327,10 @@ public class BookingService : IBookingService
         {
             return ServiceResult.Ok(new ServiceAvailabilityResponse
             {
-                Success = false,
-                Message = "No services are currently available in your area. Please try a different pincode.",
+                Success = true,
+                Pincode = normalizedPincode,
+                AnyProviderAvailableInPincode = false,
+                Message = "No services are currently available in your area.",
                 Services = new List<ServiceAvailabilityItem>()
             });
         }
@@ -333,63 +341,12 @@ public class BookingService : IBookingService
             .Where(s => s.IsActive && serviceIdsInPincode.Contains(s.Id))
             .ToListAsync(cancellationToken);
 
-        // If customer is logged in, filter services based on service provider leave status
-        // Note: We need to consider only providers who serve this pincode
-        if (customerId.HasValue)
-        {
-            var serviceIdsToFilter = services.Select(s => s.Id).ToList();
-            var checkDate = DateTime.UtcNow.Date;
-
-            // Get service providers for these services who serve this pincode
-            var serviceProviderMapping = await (
-                from ps in _context.ProviderServices
-                join pref in _context.ServiceProviderPincodePreferences
-                    on ps.UserId equals pref.UserId
-                where ps.IsActive && serviceIdsToFilter.Contains(ps.ServiceId) && pref.Pincode == normalizedPincode
-                group ps by ps.ServiceId into g
-                select new
-                {
-                    ServiceId = g.Key,
-                    ProviderIds = g.Select(ps => ps.UserId).Distinct().ToList()
-                }
-            ).ToListAsync(cancellationToken);
-
-            // Get all providers who are on leave today
-            var allProviderIds = serviceProviderMapping.SelectMany(m => m.ProviderIds).Distinct().ToList();
-            var providersOnLeave = await _context.ServiceProviderLeaveDays
-                .AsNoTracking()
-                .Where(l => allProviderIds.Contains(l.ServiceProviderId) && l.LeaveDate.Date == checkDate)
-                .Select(l => l.ServiceProviderId)
-                .Distinct()
-                .ToListAsync(cancellationToken);
-
-            var providersOnLeaveSet = providersOnLeave.ToHashSet();
-
-            // Filter services based on provider availability
-            var availableServiceIds = new HashSet<int>();
-            foreach (var mapping in serviceProviderMapping)
-            {
-                var providerIds = mapping.ProviderIds;
-                var availableProviders = providerIds.Where(p => !providersOnLeaveSet.Contains(p)).ToList();
-
-                // If service has only one provider and that provider is on leave, exclude the service
-                if (providerIds.Count == 1 && providersOnLeaveSet.Contains(providerIds[0]))
-                {
-                    continue;
-                }
-
-                // If service has multiple providers, include it only if at least one provider is not on leave
-                if (providerIds.Count > 1 && availableProviders.Count == 0)
-                {
-                    continue;
-                }
-
-                // Service is available (either has multiple providers with at least one available, or single provider not on leave)
-                availableServiceIds.Add(mapping.ServiceId);
-            }
-
-            services = services.Where(s => availableServiceIds.Contains(s.Id)).ToList();
-        }
+        var serviceIdsToCount = services.Select(s => s.Id).ToList();
+        var providerCounts = await _providerAvailabilityService.GetActiveProviderCountsByServiceIdsAndPincodeAsync(
+            serviceIdsToCount,
+            normalizedPincode,
+            businessDate,
+            cancellationToken);
 
         // Get prices for all services
         var serviceIds = services.Select(service => service.Id).ToList();
@@ -409,6 +366,7 @@ public class BookingService : IBookingService
         {
             Success = true,
             Pincode = normalizedPincode,
+            AnyProviderAvailableInPincode = true,
             Services = services.Select(service => new ServiceAvailabilityItem
             {
                 ServiceId = service.Id.ToString(),
@@ -420,7 +378,9 @@ public class BookingService : IBookingService
                 CategoryImage = service.Category?.Image,
                 CategoryIcon = service.Category?.Icon,
                 CategoryName = service.Category?.CategoryName ?? "Uncategorized",
-                IsAvailable = true,
+                IsAvailable = providerCounts.TryGetValue(service.Id, out var count) && count > 0,
+                HasAvailableProvider = providerCounts.TryGetValue(service.Id, out var availableCount) && availableCount > 0,
+                CanBook = providerCounts.TryGetValue(service.Id, out var canBookCount) && canBookCount > 0,
                 CalculatedPrice = servicePrices.TryGetValue(service.Id, out var price) ? price : 0,
                 PriceRating = 1 // Default price rating
             }).ToList(),
@@ -452,13 +412,25 @@ public class BookingService : IBookingService
             });
         }
 
-        
+        var activeProviders = await _providerAvailabilityService.GetActiveProvidersByPincodeAsync(
+            normalizedPincode,
+            DateTime.UtcNow.Date,
+            cancellationToken);
+
+        var availableServicesCount = await _context.ProviderServices
+            .AsNoTracking()
+            .Where(ps => ps.IsActive && activeProviders.Contains(ps.UserId))
+            .Select(ps => ps.ServiceId)
+            .Distinct()
+            .CountAsync(cancellationToken);
 
         return ServiceResult.Ok(new PincodeValidationResponse
         {
             Valid = true,
-            AvailableServicesCount = 0,
-            Message = $"now services available in this pincode"
+            AvailableServicesCount = availableServicesCount,
+            Message = availableServicesCount > 0
+                ? $"{availableServicesCount} service(s) available in this pincode"
+                : "No providers currently available in this pincode"
         });
     }
 
@@ -553,21 +525,18 @@ public class BookingService : IBookingService
             });
         }
 
-        var isAvailable = await _context.ServiceProviderPincodePreferences
-            .AsNoTracking()
-            .Where(pref => pref.Pincode == normalizedPincode)
-            .Join(_context.ProviderServices.AsNoTracking().Where(ps => ps.IsActive && ps.ServiceId == request.ServiceId),
-                pref => pref.UserId,
-                ps => ps.UserId,
-                (pref, ps) => ps.ServiceId)
-            .AnyAsync(cancellationToken);
+        var isAvailable = await _providerAvailabilityService.IsAnyProviderAvailableForServiceAndPincodeAsync(
+            request.ServiceId,
+            normalizedPincode,
+            DateTime.UtcNow.Date,
+            cancellationToken);
 
         if (!isAvailable)
         {
             return ServiceResult.Ok(new BookingResponse
             {
                 Success = false,
-                Message = "This service is not available in the specified pincode"
+                Message = "No provider is currently available for this service in your pincode."
             });
         }
 
@@ -2501,6 +2470,333 @@ public class BookingService : IBookingService
         });
     }
 
+    public async Task<ServiceResult> AdminCancelBookingAsync(Guid? adminId, AdminCancelBookingRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!adminId.HasValue)
+        {
+            return ServiceResult.Unauthorized();
+        }
+
+        if (request.BookingId == Guid.Empty || string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return ServiceResult.BadRequest("Booking ID and cancel reason are required.");
+        }
+
+        var booking = await _context.BookingRequests
+            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+
+        if (booking == null)
+        {
+            return ServiceResult.Ok(new BookingResponse
+            {
+                Success = false,
+                Message = "Booking not found"
+            });
+        }
+
+        var statusIds = await GetStatusIdsByCodesAsync(new[]
+        {
+            BookingStatusCodes.Cancelled,
+            BookingStatusCodes.Completed
+        }, cancellationToken);
+
+        var cancelledStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Cancelled);
+        var completedStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Completed);
+
+        if (booking.StatusId == cancelledStatusId)
+        {
+            return ServiceResult.Ok(new BookingResponse
+            {
+                Success = false,
+                Message = "Booking is already cancelled"
+            });
+        }
+
+        if (booking.StatusId == completedStatusId)
+        {
+            return ServiceResult.Ok(new BookingResponse
+            {
+                Success = false,
+                Message = "Cannot cancel a completed booking"
+            });
+        }
+
+        booking.AdminId = adminId.Value;
+        booking.AdminNotes = string.IsNullOrWhiteSpace(booking.AdminNotes)
+            ? $"Cancelled by admin: {request.Reason.Trim()}"
+            : $"{booking.AdminNotes}\nCancelled by admin: {request.Reason.Trim()}";
+        booking.StatusId = cancelledStatusId;
+        booking.Status = BookingStatusStrings.Cancelled;
+        booking.UpdatedAt = DateTime.UtcNow;
+
+        var currentAssignment = await _context.BookingAssignments
+            .FirstOrDefaultAsync(ba => ba.BookingRequestId == booking.Id && ba.IsCurrent, cancellationToken);
+
+        if (currentAssignment != null)
+        {
+            currentAssignment.IsCurrent = false;
+            currentAssignment.UnassignedAt = DateTime.UtcNow;
+            currentAssignment.UnassignedReason = $"Booking cancelled by admin: {request.Reason.Trim()}";
+            currentAssignment.ReasonType = "cancelled_by_admin";
+        }
+
+        _context.BookingStatusHistories.Add(new BookingStatusHistory
+        {
+            BookingId = booking.Id,
+            StatusId = cancelledStatusId,
+            Status = BookingStatusStrings.Cancelled,
+            ChangedBy = adminId,
+            Notes = request.Reason.Trim(),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult.Ok(new BookingResponse
+        {
+            Success = true,
+            Booking = await BuildBookingDtoAsync(booking, cancellationToken),
+            Message = "Booking cancelled successfully"
+        });
+    }
+
+    public async Task<ServiceResult> RequestRescheduleAsync(Guid? adminId, AdminRescheduleRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!adminId.HasValue)
+        {
+            return ServiceResult.Unauthorized();
+        }
+
+        if (request.BookingId == Guid.Empty || string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return ServiceResult.BadRequest("Booking ID and reschedule reason are required.");
+        }
+
+        var booking = await _context.BookingRequests
+            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+
+        if (booking == null)
+        {
+            return ServiceResult.Ok(new BookingResponse
+            {
+                Success = false,
+                Message = "Booking not found"
+            });
+        }
+
+        var statusIds = await GetStatusIdsByCodesAsync(new[]
+        {
+            BookingStatusCodes.Completed,
+            BookingStatusCodes.Cancelled,
+            BookingStatusCodes.RescheduleRequested
+        }, cancellationToken);
+
+        var completedStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Completed);
+        var cancelledStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.Cancelled);
+        var rescheduleRequestedStatusId = statusIds.GetValueOrDefault(BookingStatusCodes.RescheduleRequested);
+
+        if (booking.StatusId == completedStatusId)
+        {
+            return ServiceResult.BadRequest("Cannot request reschedule for a completed booking.");
+        }
+
+        if (booking.StatusId == cancelledStatusId)
+        {
+            return ServiceResult.BadRequest("Cannot request reschedule for a cancelled booking.");
+        }
+
+        booking.AdminId = adminId.Value;
+        booking.StatusId = rescheduleRequestedStatusId;
+        booking.Status = BookingStatusStrings.RescheduleRequested;
+        booking.UpdatedAt = DateTime.UtcNow;
+
+        if (request.SuggestedDate.HasValue)
+        {
+            var suggestedDate = request.SuggestedDate.Value;
+            booking.PreferredDate = suggestedDate.Kind == DateTimeKind.Local
+                ? suggestedDate.ToUniversalTime()
+                : DateTime.SpecifyKind(suggestedDate, DateTimeKind.Utc);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.SuggestedTimeSlot))
+        {
+            booking.TimeSlot = request.SuggestedTimeSlot.Trim();
+        }
+
+        var noteParts = new List<string> { $"Reschedule requested by admin: {request.Reason.Trim()}" };
+        if (!string.IsNullOrWhiteSpace(request.AdminNotes))
+        {
+            noteParts.Add($"Admin notes: {request.AdminNotes.Trim()}");
+        }
+        if (request.SuggestedDate.HasValue)
+        {
+            noteParts.Add($"Suggested date: {request.SuggestedDate.Value:yyyy-MM-dd}");
+        }
+        if (!string.IsNullOrWhiteSpace(request.SuggestedTimeSlot))
+        {
+            noteParts.Add($"Suggested slot: {request.SuggestedTimeSlot.Trim()}");
+        }
+
+        var consolidatedNotes = string.Join(" | ", noteParts);
+        booking.AdminNotes = string.IsNullOrWhiteSpace(booking.AdminNotes)
+            ? consolidatedNotes
+            : $"{booking.AdminNotes}\n{consolidatedNotes}";
+
+        _context.BookingStatusHistories.Add(new BookingStatusHistory
+        {
+            BookingId = booking.Id,
+            StatusId = rescheduleRequestedStatusId,
+            Status = BookingStatusStrings.RescheduleRequested,
+            ChangedBy = adminId,
+            Notes = consolidatedNotes,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult.Ok(new BookingResponse
+        {
+            Success = true,
+            Booking = await BuildBookingDtoAsync(booking, cancellationToken),
+            Message = "Reschedule request sent to customer"
+        });
+    }
+
+    public async Task<ServiceResult> GetRescheduleDetailsAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        if (bookingId == Guid.Empty)
+        {
+            return ServiceResult.BadRequest("Booking ID is required.");
+        }
+
+        var booking = await _context.BookingRequests
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == bookingId, cancellationToken);
+
+        if (booking == null)
+        {
+            return ServiceResult.NotFound(new MessageResponse { Message = "Booking not found." });
+        }
+
+        var rescheduleRequestedStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.RescheduleRequested, cancellationToken);
+        var latestRescheduleHistory = await _context.BookingStatusHistories
+            .AsNoTracking()
+            .Where(h => h.BookingId == bookingId && h.StatusId == rescheduleRequestedStatusId)
+            .OrderByDescending(h => h.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var startDate = DateTime.UtcNow.Date.AddDays(1);
+        var availableDays = new List<RescheduleDayAvailability>();
+
+        for (var i = 0; i < 7; i++)
+        {
+            var date = startDate.AddDays(i);
+            var slotsResult = await GetAvailableTimeSlotsAsync(date, cancellationToken);
+            var slotsPayload = slotsResult.Payload as TimeSlotsResponse;
+
+            availableDays.Add(new RescheduleDayAvailability
+            {
+                Date = date,
+                TimeSlots = slotsPayload?.TimeSlots ?? new List<TimeSlotItem>()
+            });
+        }
+
+        var response = new RescheduleDetailsResponse
+        {
+            BookingId = booking.Id,
+            Status = booking.Status,
+            AdminReason = latestRescheduleHistory?.Notes,
+            AdminNotes = booking.AdminNotes,
+            CurrentPreferredDate = booking.PreferredDate,
+            CurrentTimeSlot = booking.TimeSlot,
+            Pincode = booking.Pincode,
+            AvailableDays = availableDays
+        };
+
+        return ServiceResult.Ok(response);
+    }
+
+    public async Task<ServiceResult> RespondToRescheduleAsync(Guid? customerId, CustomerRescheduleResponse request, CancellationToken cancellationToken = default)
+    {
+        if (!customerId.HasValue)
+        {
+            return ServiceResult.Unauthorized();
+        }
+
+        if (request.BookingId == Guid.Empty)
+        {
+            return ServiceResult.BadRequest("Booking ID is required.");
+        }
+
+        if (request.CancelBooking)
+        {
+            return await CancelBookingAsync(customerId, request.BookingId, cancellationToken);
+        }
+
+        if (!request.PreferredDate.HasValue)
+        {
+            return ServiceResult.BadRequest("Preferred date is required.");
+        }
+
+        var booking = await _context.BookingRequests
+            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+
+        if (booking == null)
+        {
+            return ServiceResult.Ok(new BookingResponse
+            {
+                Success = false,
+                Message = "Booking not found"
+            });
+        }
+
+        if (booking.CustomerId != customerId.Value)
+        {
+            return ServiceResult.Forbidden("You can only update your own bookings.");
+        }
+
+        var pendingStatusId = await GetStatusIdByCodeAsync(BookingStatusCodes.Pending, cancellationToken);
+        var acceptedDate = request.PreferredDate.Value;
+
+        booking.StatusId = pendingStatusId;
+        booking.Status = BookingStatusStrings.Pending;
+        booking.PreferredDate = acceptedDate.Kind == DateTimeKind.Local
+            ? acceptedDate.ToUniversalTime()
+            : DateTime.SpecifyKind(acceptedDate, DateTimeKind.Utc);
+        booking.TimeSlot = string.IsNullOrWhiteSpace(request.TimeSlot)
+            ? booking.TimeSlot
+            : request.TimeSlot.Trim();
+
+        if (request.WorkingHours.HasValue)
+        {
+            booking.WorkingHours = request.WorkingHours.Value;
+        }
+
+        booking.UpdatedAt = DateTime.UtcNow;
+
+        _context.BookingStatusHistories.Add(new BookingStatusHistory
+        {
+            BookingId = booking.Id,
+            StatusId = pendingStatusId,
+            Status = BookingStatusStrings.Pending,
+            ChangedBy = customerId,
+            Notes = "Customer submitted new preferred date/time for reschedule.",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return ServiceResult.Ok(new BookingResponse
+        {
+            Success = true,
+            Booking = await BuildBookingDtoAsync(booking, cancellationToken),
+            Message = "Reschedule response submitted successfully"
+        });
+    }
+
     private async Task<ServiceAvailabilityResponse> BuildServiceAvailabilityResponseAsync(string pincode, CancellationToken cancellationToken)
     {
         var response = new ServiceAvailabilityResponse
@@ -2990,6 +3286,14 @@ public class BookingService : IBookingService
             //        select ps.UserId
             //    ).Distinct().ToListAsync(cancellationToken);
             //}
+
+            // For same-day assignments, only checked-in providers should be considered available.
+            if (checkDate == DateTime.UtcNow.Date)
+            {
+                var checkedInProviderIds = await _providerAvailabilityService
+                    .GetActiveProvidersByPincodeAsync(normalizedPincode, checkDate, cancellationToken);
+                providerIds = providerIds.Intersect(checkedInProviderIds).ToList();
+            }
 
             // Filter out providers on leave
             var providersOnLeave = await _context.ServiceProviderLeaveDays

@@ -279,6 +279,39 @@ public class AppDbContext : DbContext
                 .HasDatabaseName("UQ_ServiceProviderLeaveDays_ServiceProviderId_LeaveDate");
         });
 
+        modelBuilder.Entity<ProviderAvailability>(entity =>
+        {
+            entity.ToTable("provider_availability");
+
+            entity.Property(e => e.Pincode)
+                .HasColumnName("pincode")
+                .HasMaxLength(10)
+                .IsRequired();
+
+            entity.Property(e => e.BusinessDate)
+                .HasColumnName("business_date")
+                .HasColumnType("date");
+
+            entity.Property(e => e.CheckInTimeUtc)
+                .HasColumnName("check_in_time_utc")
+                .HasColumnType("timestamp with time zone");
+
+            entity.Property(e => e.CheckOutTimeUtc)
+                .HasColumnName("check_out_time_utc")
+                .HasColumnType("timestamp with time zone");
+
+            entity.HasIndex(e => new { e.Pincode, e.BusinessDate, e.IsActive })
+                .HasDatabaseName("idx_provider_availability_pincode_date_active");
+
+            entity.HasIndex(e => new { e.ServiceProviderId, e.BusinessDate })
+                .HasDatabaseName("idx_provider_availability_provider_date");
+
+            entity.HasOne(e => e.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(e => e.ServiceProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Configure BookingAssignment entity
         modelBuilder.Entity<BookingAssignment>(entity =>
         {

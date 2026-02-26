@@ -14,6 +14,9 @@ public class ProviderAvailability
     [Column("service_provider_id")]
     public Guid ServiceProviderId { get; set; }
 
+    [Column("pincode")]
+    public string Pincode { get; set; } = string.Empty;
+
     /// <summary>
     /// Business date for which this availability session applies.
     /// </summary>

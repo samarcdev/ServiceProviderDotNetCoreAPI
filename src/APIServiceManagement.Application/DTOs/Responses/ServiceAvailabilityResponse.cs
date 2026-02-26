@@ -7,6 +7,7 @@ public class ServiceAvailabilityResponse
     public bool Success { get; set; }
     public string? Message { get; set; }
     public string? Pincode { get; set; }
+    public bool AnyProviderAvailableInPincode { get; set; }
     public List<ServiceAvailabilityItem> Services { get; set; } = new();
 }
 
@@ -22,6 +23,8 @@ public class ServiceAvailabilityItem
     public string? CategoryIcon { get; set; }
     public string? CategoryName { get; set; }
     public bool IsAvailable { get; set; }
+    public bool HasAvailableProvider { get; set; }
+    public bool CanBook { get; set; }
     public decimal CalculatedPrice { get; set; }
     public decimal PriceRating { get; set; }
 }
