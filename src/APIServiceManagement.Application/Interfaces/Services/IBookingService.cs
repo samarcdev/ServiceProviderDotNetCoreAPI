@@ -8,9 +8,9 @@ namespace APIServiceManagement.Application.Interfaces.Services;
 
 public interface IBookingService
 {
-    Task<ServiceResult> GetAllAvailableServicesAsync(CancellationToken cancellationToken = default);
-    Task<ServiceResult> GetTopBookedServicesAsync(int days = 90, int limit = 24, CancellationToken cancellationToken = default);
-    Task<ServiceResult> GetAvailableServicesByPincodeAsync(string pincode, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetAllAvailableServicesAsync(Guid? customerId = null, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetTopBookedServicesAsync(int days = 90, int limit = 24, Guid? customerId = null, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetAvailableServicesByPincodeAsync(string pincode, Guid? customerId = null, CancellationToken cancellationToken = default);
     Task<ServiceResult> ValidatePincodeAsync(string pincode, CancellationToken cancellationToken = default);
     Task<ServiceResult> CalculateServicePriceAsync(int serviceId, string pincode, CancellationToken cancellationToken = default);
     Task<ServiceResult> CreateBookingAsync(Guid? userId, BookingCreateRequest request, CancellationToken cancellationToken = default);
@@ -41,4 +41,8 @@ public interface IBookingService
     Task<ServiceResult> GetBookingSummaryAsync(Guid? userId, int serviceId, int? serviceTypeId, string pincode, DateTime? preferredDate, string? timeSlot, string? discountCode = null, CancellationToken cancellationToken = default);
     Task<ServiceResult> CancelBookingAsync(Guid? userId, Guid bookingId, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetAvailableServiceProvidersAsync(int serviceId, string pincode, DateTime? preferredDate = null, CancellationToken cancellationToken = default);
+    Task<ServiceResult> AdminCancelBookingAsync(Guid? adminId, AdminCancelBookingRequest request, CancellationToken cancellationToken = default);
+    Task<ServiceResult> RequestRescheduleAsync(Guid? adminId, AdminRescheduleRequest request, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetRescheduleDetailsAsync(Guid bookingId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> RespondToRescheduleAsync(Guid? customerId, CustomerRescheduleResponse request, CancellationToken cancellationToken = default);
 }

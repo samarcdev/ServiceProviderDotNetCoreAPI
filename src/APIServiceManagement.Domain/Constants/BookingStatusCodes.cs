@@ -12,4 +12,5 @@ public static class BookingStatusCodes
     public const string Rejected = "REJECTED";
     public const string OnHold = "ON_HOLD";
     public const string Cancelled = "CANCELLED";
+    public const string RescheduleRequested = "RESCHEDULE_REQUESTED";
 }

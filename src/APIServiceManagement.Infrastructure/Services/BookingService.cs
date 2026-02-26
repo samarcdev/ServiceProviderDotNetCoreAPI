@@ -50,13 +50,85 @@ public class BookingService : IBookingService
         return statuses.ToDictionary(s => s.Code, s => s.Id);
     }
 
-    public async Task<ServiceResult> GetAllAvailableServicesAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Filters services based on service provider leave status when customer is logged in.
+    /// Logic: 
+    /// - If service has only one provider and that provider is on leave, exclude the service
+    /// - If service has multiple providers, include it only if at least one provider is not on leave
+    /// </summary>
+    private async Task<List<int>> FilterServicesByProviderLeaveStatusAsync(List<int> serviceIds, CancellationToken cancellationToken = default)
+    {
+        if (serviceIds == null || serviceIds.Count == 0)
+        {
+            return new List<int>();
+        }
+
+        var checkDate = DateTime.UtcNow.Date;
+
+        // Get all service providers for these services
+        var serviceProviderMapping = await _context.ProviderServices
+            .AsNoTracking()
+            .Where(ps => ps.IsActive && serviceIds.Contains(ps.ServiceId))
+            .GroupBy(ps => ps.ServiceId)
+            .Select(g => new
+            {
+                ServiceId = g.Key,
+                ProviderIds = g.Select(ps => ps.UserId).Distinct().ToList()
+            })
+            .ToListAsync(cancellationToken);
+
+        // Get all providers who are on leave today
+        var allProviderIds = serviceProviderMapping.SelectMany(m => m.ProviderIds).Distinct().ToList();
+        var providersOnLeave = await _context.ServiceProviderLeaveDays
+            .AsNoTracking()
+            .Where(l => allProviderIds.Contains(l.ServiceProviderId) && l.LeaveDate.Date == checkDate)
+            .Select(l => l.ServiceProviderId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var providersOnLeaveSet = providersOnLeave.ToHashSet();
+
+        // Filter services based on provider availability
+        var availableServiceIds = new List<int>();
+        foreach (var mapping in serviceProviderMapping)
+        {
+            var providerIds = mapping.ProviderIds;
+            var availableProviders = providerIds.Where(p => !providersOnLeaveSet.Contains(p)).ToList();
+
+            // If service has only one provider and that provider is on leave, exclude the service
+            if (providerIds.Count == 1 && providersOnLeaveSet.Contains(providerIds[0]))
+            {
+                continue;
+            }
+
+            // If service has multiple providers, include it only if at least one provider is not on leave
+            if (providerIds.Count > 1 && availableProviders.Count == 0)
+            {
+                continue;
+            }
+
+            // Service is available (either has multiple providers with at least one available, or single provider not on leave)
+            availableServiceIds.Add(mapping.ServiceId);
+        }
+
+        return availableServiceIds;
+    }
+
+    public async Task<ServiceResult> GetAllAvailableServicesAsync(Guid? customerId = null, CancellationToken cancellationToken = default)
     {
         var services = await _context.Services
             .AsNoTracking()
             .Where(service => service.IsActive)
             .Include(service => service.Category)
             .ToListAsync(cancellationToken);
+
+        // If customer is logged in, filter services based on service provider leave status
+        if (customerId.HasValue)
+        {
+            var serviceIdsToFilter = services.Select(s => s.Id).ToList();
+            var availableServiceIds = await FilterServicesByProviderLeaveStatusAsync(serviceIdsToFilter, cancellationToken);
+            services = services.Where(s => availableServiceIds.Contains(s.Id)).ToList();
+        }
 
         // Get prices for all services
         var serviceIds = services.Select(service => service.Id).ToList();
@@ -95,7 +167,7 @@ public class BookingService : IBookingService
         return ServiceResult.Ok(response);
     }
 
-    public async Task<ServiceResult> GetTopBookedServicesAsync(int days = 90, int limit = 24, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult> GetTopBookedServicesAsync(int days = 90, int limit = 24, Guid? customerId = null, CancellationToken cancellationToken = default)
     {
         var lookbackDays = days <= 0 ? 90 : Math.Min(days, 365);
         var takeLimit = limit <= 0 ? 24 : Math.Min(limit, 100);
@@ -151,6 +223,14 @@ public class BookingService : IBookingService
             .OrderBy(service => serviceIdOrder.TryGetValue(service.Id, out var index) ? index : int.MaxValue)
             .ToList();
 
+        // If customer is logged in, filter services based on service provider leave status
+        if (customerId.HasValue)
+        {
+            var serviceIdsToFilter = orderedServices.Select(s => s.Id).ToList();
+            var availableServiceIds = await FilterServicesByProviderLeaveStatusAsync(serviceIdsToFilter, cancellationToken);
+            orderedServices = orderedServices.Where(s => availableServiceIds.Contains(s.Id)).ToList();
+        }
+
         var serviceIds = orderedServices.Select(service => service.Id).ToList();
         var allServicePrices = await _context.ServicePrices
             .AsNoTracking()
@@ -188,7 +268,7 @@ public class BookingService : IBookingService
         return ServiceResult.Ok(response);
     }
 
-    public async Task<ServiceResult> GetAvailableServicesByPincodeAsync(string pincode, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult> GetAvailableServicesByPincodeAsync(string pincode, Guid? customerId = null, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(pincode))
         {
@@ -252,6 +332,64 @@ public class BookingService : IBookingService
             .Include(s => s.Category)
             .Where(s => s.IsActive && serviceIdsInPincode.Contains(s.Id))
             .ToListAsync(cancellationToken);
+
+        // If customer is logged in, filter services based on service provider leave status
+        // Note: We need to consider only providers who serve this pincode
+        if (customerId.HasValue)
+        {
+            var serviceIdsToFilter = services.Select(s => s.Id).ToList();
+            var checkDate = DateTime.UtcNow.Date;
+
+            // Get service providers for these services who serve this pincode
+            var serviceProviderMapping = await (
+                from ps in _context.ProviderServices
+                join pref in _context.ServiceProviderPincodePreferences
+                    on ps.UserId equals pref.UserId
+                where ps.IsActive && serviceIdsToFilter.Contains(ps.ServiceId) && pref.Pincode == normalizedPincode
+                group ps by ps.ServiceId into g
+                select new
+                {
+                    ServiceId = g.Key,
+                    ProviderIds = g.Select(ps => ps.UserId).Distinct().ToList()
+                }
+            ).ToListAsync(cancellationToken);
+
+            // Get all providers who are on leave today
+            var allProviderIds = serviceProviderMapping.SelectMany(m => m.ProviderIds).Distinct().ToList();
+            var providersOnLeave = await _context.ServiceProviderLeaveDays
+                .AsNoTracking()
+                .Where(l => allProviderIds.Contains(l.ServiceProviderId) && l.LeaveDate.Date == checkDate)
+                .Select(l => l.ServiceProviderId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+
+            var providersOnLeaveSet = providersOnLeave.ToHashSet();
+
+            // Filter services based on provider availability
+            var availableServiceIds = new HashSet<int>();
+            foreach (var mapping in serviceProviderMapping)
+            {
+                var providerIds = mapping.ProviderIds;
+                var availableProviders = providerIds.Where(p => !providersOnLeaveSet.Contains(p)).ToList();
+
+                // If service has only one provider and that provider is on leave, exclude the service
+                if (providerIds.Count == 1 && providersOnLeaveSet.Contains(providerIds[0]))
+                {
+                    continue;
+                }
+
+                // If service has multiple providers, include it only if at least one provider is not on leave
+                if (providerIds.Count > 1 && availableProviders.Count == 0)
+                {
+                    continue;
+                }
+
+                // Service is available (either has multiple providers with at least one available, or single provider not on leave)
+                availableServiceIds.Add(mapping.ServiceId);
+            }
+
+            services = services.Where(s => availableServiceIds.Contains(s.Id)).ToList();
+        }
 
         // Get prices for all services
         var serviceIds = services.Select(service => service.Id).ToList();

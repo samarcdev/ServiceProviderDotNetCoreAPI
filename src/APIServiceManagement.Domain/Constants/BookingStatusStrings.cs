@@ -12,4 +12,5 @@ public static class BookingStatusStrings
     public const string Rejected = "rejected";
     public const string OnHold = "on_hold";
     public const string Cancelled = "cancelled";
+    public const string RescheduleRequested = "reschedule_requested";
 }

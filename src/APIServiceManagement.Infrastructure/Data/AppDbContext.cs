@@ -56,6 +56,8 @@ public class AppDbContext : DbContext
     public DbSet<CreditNoteAddOn> CreditNoteAddOns { get; set; }
     public DbSet<CreditNoteAuditHistory> CreditNoteAuditHistories { get; set; }
     public DbSet<CreditNoteApplication> CreditNoteApplications { get; set; }
+    public DbSet<UserTermination> UserTerminations { get; set; }
+    public DbSet<ProviderAvailability> ProviderAvailabilities { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -460,6 +462,20 @@ public class AppDbContext : DbContext
             entity.HasOne(e => e.ChangedByUser)
                 .WithMany()
                 .HasForeignKey(e => e.ChangedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Configure UserTermination entity relationships
+        modelBuilder.Entity<UserTermination>(entity =>
+        {
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.TerminatedByUser)
+                .WithMany()
+                .HasForeignKey(e => e.TerminatedBy)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

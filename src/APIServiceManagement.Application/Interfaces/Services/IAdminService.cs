@@ -14,4 +14,5 @@ public interface IAdminService
     Task<ServiceResult> UpdateVerificationStatusAsync(Guid? adminId, int verificationId, UpdateVerificationStatusRequest request, CancellationToken cancellationToken = default);
     Task<ServiceResult> CheckAdminPermissionsAsync(Guid? userId, CancellationToken cancellationToken = default);
     Task<ServiceResult> GetAdminAssignedStatesAsync(Guid? adminId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> TerminateUserAsync(Guid? adminId, TerminateUserRequest request, CancellationToken cancellationToken = default);
 }

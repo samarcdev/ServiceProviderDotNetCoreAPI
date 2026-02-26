@@ -615,6 +615,105 @@ public class AdminService : IAdminService
         }
     }
 
+    public async Task<ServiceResult> TerminateUserAsync(Guid? adminId, TerminateUserRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!adminId.HasValue)
+        {
+            return ServiceResult.Unauthorized();
+        }
+
+        if (request == null || request.UserId == Guid.Empty)
+        {
+            return ServiceResult.BadRequest("User ID is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 10)
+        {
+            return ServiceResult.BadRequest("A solid reason for termination is required (minimum 10 characters).");
+        }
+
+        // Verify the requesting user has admin role
+        var adminUser = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == adminId.Value, cancellationToken);
+
+        if (adminUser == null)
+        {
+            return ServiceResult.NotFound("Admin user not found.");
+        }
+
+        var roleName = adminUser.Role?.Name?.ToLowerInvariant() ?? string.Empty;
+        var normalizedRoleName = roleName.Replace("_", "").Replace("-", "");
+        var isAdmin = normalizedRoleName == RoleNames.Normalized.Admin
+            || normalizedRoleName == RoleNames.Normalized.MasterAdmin
+            || normalizedRoleName == RoleNames.Normalized.DefaultAdmin
+            || normalizedRoleName == RoleNames.Normalized.SuperAdmin;
+
+        if (!isAdmin)
+        {
+            return ServiceResult.Forbidden("Access denied. Admin role required.");
+        }
+
+        try
+        {
+            // Get the target user
+            var targetUser = await _context.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken);
+
+            if (targetUser == null)
+            {
+                return ServiceResult.NotFound("User not found.");
+            }
+
+            // Prevent terminating yourself
+            if (targetUser.Id == adminId.Value)
+            {
+                return ServiceResult.BadRequest("You cannot terminate your own account.");
+            }
+
+            // Check if the user is already terminated
+            if (targetUser.StatusId == (int)UserStatusEnum.Terminated)
+            {
+                return ServiceResult.BadRequest("This user is already terminated.");
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Update user status to Terminated
+            targetUser.StatusId = (int)UserStatusEnum.Terminated;
+            targetUser.RefreshToken = null;
+            targetUser.RefreshTokenExpiresAt = null;
+            targetUser.UpdatedAt = now;
+
+            // Create termination record
+            var termination = new UserTermination
+            {
+                UserId = request.UserId,
+                TerminatedBy = adminId.Value,
+                Reason = request.Reason.Trim(),
+                TerminatedAt = now,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            _context.UserTerminations.Add(termination);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            return ServiceResult.Ok(new OperationResponse
+            {
+                Success = true,
+                Message = $"User '{targetUser.Name}' has been terminated successfully."
+            });
+        }
+        catch (Exception ex)
+        {
+            return ServiceResult.BadRequest($"Error terminating user: {ex.Message}");
+        }
+    }
+
     private async Task<Dictionary<string, int>> GetStatusIdsByCodesAsync(string[] codes, CancellationToken cancellationToken = default)
     {
         var normalizedCodes = codes.Select(c => c.ToUpperInvariant()).ToArray();

@@ -1,0 +1,153 @@
+---
+alwaysApply: true
+---
+
+# Architecture Rule: API Owns ALL Business Logic
+
+## CRITICAL: This API Is the Single Source of Truth
+
+This .NET Core API (`NewAPIHomeService`) is the **sole owner** of all business logic, data processing, validation, and business rules for the Service Management System. The Next.js frontend (`Service Management System`) is a thin UI client that ONLY displays data and collects user input.
+
+---
+
+## Core Principle
+
+> **API = Brain. Frontend = UI shell.**
+> Every business decision, calculation, validation, and data transformation MUST happen here in the API. The frontend must NEVER contain business logic.
+
+---
+
+## API MUST Handle
+
+### 1. All Business Rules and Logic
+- **ALWAYS** implement business rules in Application/Domain layer services
+- **ALWAYS** implement approval workflows, status transitions, and state machines in the API
+- **ALWAYS** implement eligibility checks, access controls, and permission logic in the API
+- **ALWAYS** implement conditional business rules (e.g., cancellation policies, booking rules)
+- **ALWAYS** implement business event triggers and side effects in the API
+
+### 2. All Calculations and Data Processing
+- **ALWAYS** calculate prices, taxes, discounts, totals, and derived values in the API
+- **ALWAYS** compute aggregates, statistics, and dashboard metrics in the API
+- **ALWAYS** perform data transformations and enrichment in the API
+- **ALWAYS** generate invoices, credit notes, and financial documents in the API
+
+### 3. All Data Validation (Beyond UX)
+- **ALWAYS** validate business rules (e.g., "cannot book service outside operating hours")
+- **ALWAYS** validate data integrity and consistency
+- **ALWAYS** validate relationships between entities
+- **ALWAYS** validate state transitions (e.g., only "Pending" bookings can be cancelled)
+- **ALWAYS** use DTO validation attributes for input validation (see `api-validation-rule.mdc`)
+
+### 4. Complete API Responses
+- **ALWAYS** return all data the frontend needs in a single response
+- **ALWAYS** include computed/derived fields the UI needs to display
+- **ALWAYS** include boolean flags for UI decisions (e.g., `canCancel`, `canEdit`, `isEligible`)
+- **NEVER** expect the frontend to compute business values from raw data
+- **NEVER** require the frontend to call multiple endpoints and combine data for business logic
+
+### 5. Authorization and Access Control
+- **ALWAYS** check user roles and permissions in the API
+- **ALWAYS** enforce row-level access control in the API
+- **ALWAYS** validate that the requesting user has rights to the requested resource
+
+---
+
+## API Response Design Principles
+
+### Return Ready-to-Display Data
+The API response should contain everything the frontend needs to render the UI without any business computation:
+
+```csharp
+// CORRECT - API returns complete, ready-to-display response
+public class BookingDetailsResponse
+{
+    public Guid BookingId { get; set; }
+    public string Status { get; set; }
+    public decimal TotalAmount { get; set; }       // Calculated by API
+    public decimal TaxAmount { get; set; }          // Calculated by API
+    public decimal DiscountAmount { get; set; }     // Calculated by API
+    public bool CanCancel { get; set; }             // Business rule evaluated by API
+    public bool CanReschedule { get; set; }         // Business rule evaluated by API
+    public bool CanRate { get; set; }               // Business rule evaluated by API
+    public string StatusDisplayText { get; set; }   // API decides display text
+}
+
+// WRONG - Forcing frontend to calculate/decide
+public class BookingDetailsResponse
+{
+    public Guid BookingId { get; set; }
+    public string Status { get; set; }
+    public decimal BasePrice { get; set; }
+    public decimal TaxRate { get; set; }
+    // Frontend has to calculate total = BasePrice * (1 + TaxRate) - NO!
+    // Frontend has to check status == "Pending" for cancel button - NO!
+}
+```
+
+### Include Business Decision Flags
+When the UI needs to show/hide buttons or sections based on business rules, the API must provide boolean flags:
+
+```csharp
+// CORRECT - API provides flags for UI decisions
+public class BookingActionsResponse
+{
+    public bool CanCancel { get; set; }
+    public bool CanReschedule { get; set; }
+    public bool CanAssignProvider { get; set; }
+    public bool CanGenerateInvoice { get; set; }
+    public bool CanCreateCreditNote { get; set; }
+    public string CancelDisabledReason { get; set; }  // If can't cancel, tell UI why
+}
+```
+
+---
+
+## New Feature Development Workflow
+
+When building new features, ALWAYS follow this order:
+
+1. **Design the API endpoint first** - Define request/response DTOs, business rules, and validation
+2. **Implement business logic in Application/Domain services** - All rules, calculations, workflows
+3. **Create the controller endpoint** - Wire up the service, handle HTTP concerns
+4. **Add DTO validation attributes** - Per `api-validation-rule.mdc`
+5. **Test the API endpoint** - Verify business logic works correctly via Swagger/Postman
+6. **THEN** the frontend team builds the UI that calls this endpoint
+
+---
+
+## Service Layer Responsibilities
+
+### Application Services (`Application/Services/`)
+- Orchestrate business workflows
+- Implement business rules and validations
+- Coordinate between repositories
+- Handle business events and side effects
+- Return complete DTOs with all computed fields
+
+### Domain Layer (`Domain/Entities/`)
+- Define business entities and value objects
+- Encapsulate domain-specific behavior
+- Define domain events
+
+### Infrastructure Layer (`Infrastructure/`)
+- Database access via repositories
+- External service integrations
+- File storage, email sending, etc.
+
+### API Layer (`API/Controllers/`)
+- HTTP request/response handling
+- Authentication/authorization attributes
+- Input validation via model binding
+- Map to/from application DTOs
+
+---
+
+## Enforcement
+
+- **VIOLATION OF THIS RULE IS CRITICAL**
+- **NEVER** tell the frontend team to implement business logic on their side
+- **NEVER** return raw/unprocessed data expecting the frontend to compute values
+- **ALWAYS** provide complete, ready-to-display responses
+- **ALWAYS** include business decision flags in responses when the UI needs to conditionally show/hide elements
+- If a frontend developer asks "where should this logic go?" — the answer is ALWAYS "in the API"

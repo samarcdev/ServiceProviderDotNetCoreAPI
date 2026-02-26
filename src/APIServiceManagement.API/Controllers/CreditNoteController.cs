@@ -6,6 +6,7 @@ using APIServiceManagement.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
@@ -202,5 +203,6 @@ public class CreditNoteController : ControllerBase
 
 public class CancelCreditNoteRequest
 {
+    [StringLength(500, ErrorMessage = "Reason cannot exceed 500 characters")]
     public string? Reason { get; set; }
 }

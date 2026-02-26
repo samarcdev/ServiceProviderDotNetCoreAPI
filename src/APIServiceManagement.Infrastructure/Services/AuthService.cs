@@ -166,7 +166,17 @@ public class AuthService : IAuthService
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.MobileNumber == normalizedMobile);
 
-        if (user == null || user.StatusId != (int)UserStatusEnum.Active)
+        if (user == null)
+        {
+            throw new InvalidOperationException("Invalid credentials.");
+        }
+
+        if (user.StatusId == (int)UserStatusEnum.Terminated)
+        {
+            throw new InvalidOperationException("Your login has been terminated by your administrator. Please contact your administrator for more details.");
+        }
+
+        if (user.StatusId != (int)UserStatusEnum.Active)
         {
             throw new InvalidOperationException("Invalid credentials.");
         }
@@ -195,7 +205,17 @@ public class AuthService : IAuthService
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.RefreshToken == refreshToken);
 
-        if (user == null || user.StatusId != (int)UserStatusEnum.Active)
+        if (user == null)
+        {
+            throw new InvalidOperationException("Invalid refresh token.");
+        }
+
+        if (user.StatusId == (int)UserStatusEnum.Terminated)
+        {
+            throw new InvalidOperationException("Your login has been terminated by your administrator. Please contact your administrator for more details.");
+        }
+
+        if (user.StatusId != (int)UserStatusEnum.Active)
         {
             throw new InvalidOperationException("Invalid refresh token.");
         }

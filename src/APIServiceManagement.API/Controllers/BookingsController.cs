@@ -26,7 +26,8 @@ public class BookingsController : ControllerBase
     [HttpGet("available-services")]
     public async Task<IActionResult> GetAllAvailableServices(CancellationToken cancellationToken)
     {
-        var result = await _bookingService.GetAllAvailableServicesAsync(cancellationToken);
+        var customerId = GetUserId(); // Returns null if not authenticated
+        var result = await _bookingService.GetAllAvailableServicesAsync(customerId, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -37,7 +38,8 @@ public class BookingsController : ControllerBase
         [FromQuery] int limit = 24,
         CancellationToken cancellationToken = default)
     {
-        var result = await _bookingService.GetTopBookedServicesAsync(days, limit, cancellationToken);
+        var customerId = GetUserId(); // Returns null if not authenticated
+        var result = await _bookingService.GetTopBookedServicesAsync(days, limit, customerId, cancellationToken);
         return result.ToActionResult();
     }
 
@@ -45,7 +47,8 @@ public class BookingsController : ControllerBase
     [HttpGet("available-services-by-pincode")]
     public async Task<IActionResult> GetAvailableServicesByPincode([FromQuery] string pincode, CancellationToken cancellationToken)
     {
-        var result = await _bookingService.GetAvailableServicesByPincodeAsync(pincode, cancellationToken);
+        var customerId = GetUserId(); // Returns null if not authenticated
+        var result = await _bookingService.GetAvailableServicesByPincodeAsync(pincode, customerId, cancellationToken);
         return result.ToActionResult();
     }
 

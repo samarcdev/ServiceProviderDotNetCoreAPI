@@ -72,6 +72,15 @@ public class AdminController : ControllerBase
         return result.ToActionResult();
     }
 
+    [HttpPost("terminate-user")]
+    public async Task<IActionResult> TerminateUser(
+        [FromBody] TerminateUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _adminService.TerminateUserAsync(GetUserId(), request, cancellationToken);
+        return result.ToActionResult();
+    }
+
     private Guid? GetUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);

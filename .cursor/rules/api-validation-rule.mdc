@@ -1,0 +1,235 @@
+---
+alwaysApply: true
+description: Mandatory validation attributes for all API request DTOs
+globs: **/DTOs/Requests/*.cs,**/DTOs/**/*Request.cs
+---
+
+# API Request DTO Validation Rules
+
+## ⚠️ CRITICAL: All API Request DTOs MUST Have Validation Attributes
+
+### MANDATORY REQUIREMENT
+
+**EVERY request DTO class used in API endpoints MUST have appropriate validation attributes.** This is non-negotiable and must be enforced for all new and existing DTOs.
+
+## Validation Attribute Requirements
+
+### 1. Required Fields
+- **ALWAYS** use `[Required]` attribute for mandatory fields
+- **ALWAYS** include a descriptive `ErrorMessage` property
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Booking ID is required")]
+public Guid BookingId { get; set; }
+```
+
+### 2. String Length Validation
+- **ALWAYS** use `[StringLength]` for string properties (even optional ones)
+- **ALWAYS** set `MaximumLength` based on database column constraints
+- **ALWAYS** set `MinimumLength` for required strings when appropriate
+- **ALWAYS** include `ErrorMessage` property
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Pincode is required")]
+[StringLength(10, MinimumLength = 6, ErrorMessage = "Pincode must be between 6 and 10 characters")]
+public string Pincode { get; set; } = string.Empty;
+
+[StringLength(1000, ErrorMessage = "Notes cannot exceed 1000 characters")]
+public string? Notes { get; set; }
+```
+
+### 3. Numeric Range Validation
+- **ALWAYS** use `[Range]` for numeric types (int, decimal, double, etc.)
+- **ALWAYS** set minimum value (typically 0 or 1 for IDs)
+- **ALWAYS** set maximum value (use `int.MaxValue` or `double.MaxValue` for unbounded)
+- **ALWAYS** include `ErrorMessage` property
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Service ID is required")]
+[Range(1, int.MaxValue, ErrorMessage = "Service ID must be greater than 0")]
+public int ServiceId { get; set; }
+
+[Range(0, double.MaxValue, ErrorMessage = "Price must be non-negative")]
+public decimal? Price { get; set; }
+
+[Range(1, 5, ErrorMessage = "Rating must be between 1 and 5")]
+public int? Rating { get; set; }
+```
+
+### 4. Email Validation
+- **ALWAYS** use `[EmailAddress]` for email fields
+- **ALWAYS** combine with `[Required]` and `[StringLength]`
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Email is required")]
+[EmailAddress(ErrorMessage = "Invalid email format")]
+[StringLength(256, ErrorMessage = "Email cannot exceed 256 characters")]
+public string Email { get; set; } = string.Empty;
+```
+
+### 5. Phone Number Validation
+- **ALWAYS** use `[Phone]` for phone number fields
+- **ALWAYS** combine with `[Required]` and `[StringLength]`
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Phone number is required")]
+[Phone(ErrorMessage = "Invalid phone number format")]
+[StringLength(20, ErrorMessage = "Phone number cannot exceed 20 characters")]
+public string PhoneNumber { get; set; } = string.Empty;
+```
+
+### 6. Collection Validation
+- **ALWAYS** use `[MinLength]` or `[Required]` for collections that must have items
+- **Example:**
+```csharp
+[Required(ErrorMessage = "At least one service ID is required")]
+[MinLength(1, ErrorMessage = "At least one service ID is required")]
+public List<int> ServiceIds { get; set; } = new();
+```
+
+### 7. Guid Validation
+- **ALWAYS** use `[Required]` for Guid fields that are mandatory
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Booking ID is required")]
+public Guid BookingId { get; set; }
+```
+
+### 8. DateTime Validation
+- **ALWAYS** use `[Required]` for DateTime fields that are mandatory
+- Consider using `[DataType(DataType.Date)]` or `[DataType(DataType.DateTime)]` for clarity
+- **Example:**
+```csharp
+[Required(ErrorMessage = "Start date is required")]
+public DateTime StartDate { get; set; }
+```
+
+### 9. Optional Fields
+- **ALWAYS** add validation even for optional fields (nullable properties)
+- Use `[StringLength]`, `[Range]`, or other constraints for optional fields
+- **Example:**
+```csharp
+[StringLength(1000, ErrorMessage = "Description cannot exceed 1000 characters")]
+public string? Description { get; set; }
+
+[Range(0, double.MaxValue, ErrorMessage = "Discount amount must be non-negative")]
+public decimal? DiscountAmount { get; set; }
+```
+
+## Validation Checklist for Every DTO
+
+When creating or modifying a request DTO, ensure:
+
+- [ ] All required fields have `[Required]` attribute with `ErrorMessage`
+- [ ] All string properties have `[StringLength]` with appropriate max/min length
+- [ ] All numeric properties have `[Range]` validation
+- [ ] All email fields have `[EmailAddress]` attribute
+- [ ] All phone fields have `[Phone]` attribute
+- [ ] All Guid properties that are required have `[Required]`
+- [ ] All DateTime properties that are required have `[Required]`
+- [ ] All collections that must have items have `[MinLength]` or `[Required]`
+- [ ] All optional fields still have appropriate validation (StringLength, Range, etc.)
+- [ ] All validation attributes include descriptive `ErrorMessage` properties
+- [ ] The `using System.ComponentModel.DataAnnotations;` statement is present
+
+## Common Validation Patterns
+
+### Pattern 1: Required String with Length
+```csharp
+[Required(ErrorMessage = "Field name is required")]
+[StringLength(100, MinimumLength = 2, ErrorMessage = "Field name must be between 2 and 100 characters")]
+public string FieldName { get; set; } = string.Empty;
+```
+
+### Pattern 2: Optional String with Length
+```csharp
+[StringLength(500, ErrorMessage = "Field name cannot exceed 500 characters")]
+public string? FieldName { get; set; }
+```
+
+### Pattern 3: Required Numeric ID
+```csharp
+[Required(ErrorMessage = "ID is required")]
+[Range(1, int.MaxValue, ErrorMessage = "ID must be greater than 0")]
+public int Id { get; set; }
+```
+
+### Pattern 4: Optional Decimal/Price
+```csharp
+[Range(0, double.MaxValue, ErrorMessage = "Amount must be non-negative")]
+public decimal? Amount { get; set; }
+```
+
+### Pattern 5: Required Guid
+```csharp
+[Required(ErrorMessage = "Entity ID is required")]
+public Guid EntityId { get; set; }
+```
+
+### Pattern 6: Required Email
+```csharp
+[Required(ErrorMessage = "Email is required")]
+[EmailAddress(ErrorMessage = "Invalid email format")]
+[StringLength(256, ErrorMessage = "Email cannot exceed 256 characters")]
+public string Email { get; set; } = string.Empty;
+```
+
+### Pattern 7: Required Phone
+```csharp
+[Required(ErrorMessage = "Phone number is required")]
+[Phone(ErrorMessage = "Invalid phone number format")]
+[StringLength(20, ErrorMessage = "Phone number cannot exceed 20 characters")]
+public string PhoneNumber { get; set; } = string.Empty;
+```
+
+## Exceptions
+
+### Internal DTOs (Not Bound from Request Body)
+- DTOs that are created internally from `IFormFile` or other sources (like `FileUploadRequest`) do NOT need validation attributes
+- These are internal transfer objects, not request models
+
+### Query Parameters
+- Query parameters in controllers don't need DTO validation (they're validated at controller level)
+- However, if you create a DTO for query parameters, it MUST have validation
+
+## Enforcement
+
+- **NEVER** create a request DTO without validation attributes
+- **NEVER** skip validation for "optional" fields - they still need constraints
+- **ALWAYS** verify validation attributes are present before marking a DTO as complete
+- **ALWAYS** check existing DTOs when modifying them to ensure validation is maintained
+
+## Validation Error Messages
+
+- **ALWAYS** use clear, user-friendly error messages
+- **ALWAYS** be specific about what's wrong and what's expected
+- **Example of good error messages:**
+  - ✅ "Booking ID is required"
+  - ✅ "Pincode must be between 6 and 10 characters"
+  - ✅ "Service ID must be greater than 0"
+  - ✅ "Email cannot exceed 256 characters"
+- **Example of bad error messages:**
+  - ❌ "Invalid"
+  - ❌ "Error"
+  - ❌ "Required field"
+
+## Integration with ValidationFilter
+
+The API uses a `ValidationFilter` that automatically:
+- Checks `ModelState.IsValid` before controller actions execute
+- Returns 400 Bad Request with validation errors if validation fails
+- This means validation attributes MUST be present for the filter to work
+
+## Verification Steps
+
+Before completing any DTO:
+1. Check all properties have appropriate validation attributes
+2. Verify error messages are descriptive and user-friendly
+3. Ensure `using System.ComponentModel.DataAnnotations;` is present
+4. Test the endpoint with invalid data to verify validation works
+5. Check that validation errors are returned in the expected format
+
+## Related Files
+
+- ValidationFilter: [src/APIServiceManagement.API/Middleware/ValidationFilter.cs](mdc:src/APIServiceManagement.API/Middleware/ValidationFilter.cs)
+- API Configuration: [src/APIServiceManagement.API/Configuration/ApiConfiguration.cs](mdc:src/APIServiceManagement.API/Configuration/ApiConfiguration.cs)
